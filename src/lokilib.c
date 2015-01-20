@@ -52,6 +52,7 @@ static inline void init_local_tile(const init_config* config) {
     "ifp?or r9, r8, r0\n"           // frame pointer = stack pointer
     "ifp?or r10, r7, r0\n"          // set return address
 //    "ifp?fetch r7\n"                // fetch function to perform further init
+    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
   );
 
   SEND(&loki_sleep, 11);
@@ -60,6 +61,7 @@ static inline void init_local_tile(const init_config* config) {
     asm volatile (
       "rmtexecute -> 10\n"          // begin remote execution
       "ifp?fetch r7\n"              // fetch function to perform further init
+      "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
     );
 
     SEND(config->config_func, 11);
@@ -107,6 +109,7 @@ static inline void init_remote_tile(const uint tile, const init_config* config) 
     "ifp?or r9, r8, r0\n"           // frame pointer = stack pointer
     "ifp?or r10, r7, r0\n"          // set return address
     "ifp?fetch r7\n"                // fetch receive_init_config
+    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
   );
 
   SEND(&loki_sleep, 11);
@@ -172,7 +175,9 @@ void loki_init_default(const uint cores, const setup_func setup) {
 // register.
 static inline void init_cores_impl(const int first, const int last) {
 
-  int stack_pointer = 0x400000; // Core 0's default stack pointer
+  int stack_pointer; // Core 0's default stack pointer
+  asm ("addu %0, r8, r0\n" : "=r"(stack_pointer) : : );
+  stack_pointer += 0x400 - (stack_pointer & 0x3ff); // Guess at the initial sp
   int bitmask = 0;              // Bitmask of cores to send instructions to
 
   int current;
@@ -183,7 +188,8 @@ static inline void init_cores_impl(const int first, const int last) {
     stack_pointer -= 0x42000;   // Extra 0x2000 puts stacks in different banks -- or does it?
 
     asm (
-      "addu r0, r20, r0 -> 3\n"       // send cache configuration (assumes it is still in r20)
+      "addu r0, r20, r0 -> 3\n"       // send icache configuration (assumes it is still in r20)
+      "addu r0, r21, r0 -> 3\n"       // send dcache configuration (assumes it is still in r21)
       "addu r0, %0, r0 -> 3\n"        // send core its own stack pointer
       : /* no outputs */
       : "r" (stack_pointer)
@@ -204,24 +210,18 @@ static inline void init_cores_impl(const int first, const int last) {
     "ifp?cregrdi r11, 1\n"          // get core id, and put into r11
     "ifp?andi r11, r11, 0x7\n"      // get core id, and put into r11
     "ifp?lli r19, 0x0100\n"
-    "ifp?mullw r23, r19, r11\n"     // the memory port to connect to
-    "ifp?slli r23, r23, 1\n"        // multiply by two because each core gets two ports
-    "ifp?addu r17, r7, r23\n"       // complete memory address using received value
-    "ifp?addu r18, r17, r19\n"      // address of second connection
-    "ifp?lli r21, 0x1000\n"
-    "ifp?mullw r21, r21, r11\n"     // first port of this core - used to create return addresses
+    "ifp?mullw r19, r19, r11\n"     // the memory port to connect 
+    "ifp?addu r17, r7, r19\n"       // complete icache memory address using received value
+    "ifp?addu r18, r7, r19\n "      // address of second connection
     "ifp?setchmapi 0, r17\n"
-    "ifp?lui r8, 0x0100\n"          // 0x01000000 = memory connection command
-    "ifp?addu r0, r8, r0 -> 0\n"
-    "ifp?addu r21, r21, r19 -> 0\n" // connect to instruction memory (cache)
-//    "ifp?addu r0, r21, r0 -> 0\n" // connect to instruction memory (FIFO)
     "ifp?setchmapi 1, r18\n"
-    "ifp?addu r0, r8, r0 -> 1\n"
-//    "ifp?addu r21, r21, r19 \n" // only use when connecting memory to FIFO
-    "ifp?addu r21, r21, r19 -> 1\n" // connect to data memory
+    "ifp?nor r0, r0, r0\n"          // FIXME This instruction never executes in lokisim...?
+    "ifp?lli r8, 0x0103\n"          // 0x00050103 = memory configuration command
+    "ifp?lui r8, 0x0005\n"          // 0x00050103 = memory configuration command
+    "ifp?addu r0, r8, r0 -> 0\n"
     "ifp?addu r8, r7, r0\n"         // receive stack pointer
     "ifp?addu r9, r8, r0\n"         // frame pointer = stack pointer
-    "ifp?addu r0, r2, r0\n"         // consume memory's sync message
+    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
   );
 }
 
@@ -247,6 +247,7 @@ void loki_remote_execute(void* func, int core) {
     "ifp?lli r10, %%lo(loki_sleep)\n"
     "ifp?lui r10, %%hi(loki_sleep)\n"
     "ifp?fetch r7\n"
+    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
     :::
   );
 }
@@ -401,6 +402,7 @@ void distribute_to_local_tile(const distributed_func* config) {
       "ifp?addu r13, r7, r0\n"        // receive pointer to arguments
       "ifp?addu r10, r7, r0\n"        // set return address
       "ifp?fetch r7\n"                // fetch function to execute
+      "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
       // No clobbers because this is all executed remotely.
     );
   }
@@ -450,6 +452,7 @@ void distribute_to_remote_tile(const int tile, const distributed_func* config) {
     "rmtexecute -> 10\n"            // begin remote execution
     "ifp?addu r10, r7, r0\n"        // set return address
     "ifp?fetch r7\n"                // fetch function to execute
+    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
     // No clobbers because this is all executed remotely.
   );
 
@@ -659,6 +662,7 @@ void simd_local_tile(const loop_config* config) {
     "ifp?addu r14, r11, r0\n"       // put core position in argument-passing register
     "ifp?addu r10, r7, r0\n"        // set return address
     "ifp?fetch r7\n"                // fetch function to execute
+    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
     // No clobbers because this is all executed remotely.
   );
 
@@ -684,6 +688,7 @@ void simd_remote_tile(const int tile, const loop_config* config) {
     "ifp?addu r13, r7, r0\n"        // receive pointer to configuration info
     "ifp?addu r10, r7, r0\n"        // set return address
     "ifp?fetch r7\n"                // fetch function to execute
+    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
     // No clobbers because this is all executed remotely.
   );
 
@@ -776,6 +781,7 @@ void worker_farm(const loop_config* config) {
     "ifp?lli r24, %lo(worker_thread)\n"
     "ifp?lui r24, %hi(worker_thread)\n"
     "ifp?fetch r24\n"               // fetch the worker's task
+    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
   );
 
   // Issue workers with loop iterations to work on.
@@ -882,6 +888,7 @@ void pipeline_loop(const pipeline_config* config) {
     "ifp?lli r24, %lo(pipeline_stage)\n"
     "ifp?lui r24, %hi(pipeline_stage)\n"
     "ifp?fetch r24\n"               // fetch the pipeline stage's task
+    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
   );
 
   // Also start this core.
@@ -997,6 +1004,7 @@ void dd_pipeline_loop(const dd_pipeline_config* config) {
       "ifp?lli r24, %lo(dd_pipeline_stage)\n"
       "ifp?lui r24, %hi(dd_pipeline_stage)\n"
       "ifp?fetch r24\n"               // fetch the pipeline stage's task
+      "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
     );
   }
 
@@ -1045,6 +1053,7 @@ void start_dataflow(const dataflow_config* config) {
   asm (
     "rmtexecute -> 2\n"
     "ifp?fetch r24\n"
+    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
   );
 
 }
