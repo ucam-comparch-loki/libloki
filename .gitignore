@@ -1,0 +1,5 @@
+# C files
+*.a
+*.o
+*.elf
+

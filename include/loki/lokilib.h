@@ -14,12 +14,12 @@ typedef unsigned int uint;
 
 //============================================================================//
 // Interface
-// 
+//
 //   These should be the only functions/structures needed to modify a program.
 //============================================================================//
 
 typedef void (*setup_func)(void);
-                 
+
 // Information required to set up cores for autonomous execution.
 typedef struct {
   uint       cores;         // Total number of cores to initialise.
@@ -83,7 +83,7 @@ void loki_sleep();
 
 //============================================================================//
 // Helper functions
-// 
+//
 //   Very simple functions and macros which allow access to some of Loki's
 //   unique lower-level features.
 //============================================================================//
@@ -137,44 +137,46 @@ static inline uint cores_this_tile(const uint cores, const int tile) {
        : cores - tile * CORES_PER_TILE;
 }
 
+// Return the value in a control register.
+#define GET_CONTROL_REGISTER(variable, id) { \
+  asm ( \
+    "cregrdi %0, " #id "\n" \
+    : "=r"(variable) \
+    : \
+    : \
+  );\
+}
+
+// Set a control register.
+#define SET_CONTROL_REGISTER(variable, id) { \
+  asm ( \
+    "cregwri %0, " #id "\n" \
+    : \
+    : "r"(variable) \
+    : \
+  );\
+}
+
+// Return a globally unique idenitifer for this core.
+static inline uint get_unique_core_id(void) {
+  uint id;
+  GET_CONTROL_REGISTER(id, 1);
+  return id;
+}
+
 // Return the core's position within its tile: an integer between 0 and 7.
-// Note that two instructions are required here to move the result of the
-// syscall into a particular register.
 static inline uint get_core_id() {
   uint id;
-  asm (
-    "syscall 17\n"
-    "or %0, r11, r0\n"
-    : "=r" (id)
-    :
-    : "r11"
-  );
-  return id;
+  GET_CONTROL_REGISTER(id, 1);
+  return id & 0x7;
 }
 
 // Return the ID of the tile the core is in.
-// Note that two instructions are required here to move the result of the
-// syscall into a particular register.
 static inline uint get_tile_id() {
   uint id;
-  asm (
-    "syscall 16\n"
-    "or %0, r11, r0\n"
-    : "=r" (id)
-    :
-    : "r11"
-  );
-  return id;
+  GET_CONTROL_REGISTER(id, 1);
+  return id >> 4;
 }
-
-// Long instruction packets can lead to deadlock. Use this function to
-// artificially split long packets up.
-/*inline void split_packet() {
-  asm volatile (
-    "fetchr.eop 4\n"  // End the packet, and fetch the next instruction
-    :::
-  );
-}*/
 
 // Set a channel map entry to the value in the named C variable. entry must
 // be an integer literal.
@@ -213,7 +215,7 @@ static inline uint get_tile_id() {
 }
 
 // Set up a connection with memory. It is assumed that the given output channel
-// already points to the memory, and this command tells the memory where to 
+// already points to the memory, and this command tells the memory where to
 // send data back to.
 // If data is sent back to a data input, the core must consume a synchronisation
 // message which confirms that all memories are now set up properly.
@@ -329,16 +331,17 @@ static inline void barrier() {
 
 // Wait for input on any register-mapped input channel, and return the value
 // which arrived.
+// r18 must be used for irdr in verilog implementation.
 static inline int receive_any_input() {
   int data;
   asm volatile (
-    "selch %0, 0xFFFFFFFF\n"   // get the channel on which data first arrives
-    "	irdr %0, %0\n"           // get the data from the channel
+    "selch r18, 0xFFFFFFFF\n"   // get the channel on which data first arrives
+    "irdr %0, r18\n"            // get the data from the channel
     : "=r" (data)
-    : 
-    : // no clobbered registers
+    :
+    : "r18"
   );
-  
+
   return data;
 }
 
@@ -429,8 +432,8 @@ void start_dataflow(const dataflow_config* config);
 // Currently used by the dataflow and data-driven pipeline patterns.
 void end_parallel_section();
 
-// Define an instruction packet which should be executed repeatedly, in 
-// assembly. An ".eop" marker must be present on the last instruction in the 
+// Define an instruction packet which should be executed repeatedly, in
+// assembly. An ".eop" marker must be present on the last instruction in the
 // packet.
 #define DATAFLOW_PACKET(core, code) DATAFLOW_PACKET_2(core, code,,,)
 
@@ -465,7 +468,7 @@ void scratchpad_block_store_chars(char* data, size_t len, uint reg);
 void scratchpad_block_store_shorts(short* data, size_t len, uint reg);
 void scratchpad_block_store_ints(int* data, size_t len, uint reg);
 
-static int scratchpad_read(uint reg) {
+static inline int scratchpad_read(uint reg) {
   int result;
   asm volatile (
     "  scratchrd %0, %1\n"
@@ -476,7 +479,7 @@ static int scratchpad_read(uint reg) {
   return result;
 }
 
-static void scratchpad_write(uint reg, int value) {
+static inline void scratchpad_write(uint reg, int value) {
   asm volatile (
     "  scratchwr %0, %1\n"
     :
