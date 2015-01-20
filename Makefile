@@ -1,8 +1,9 @@
-lokilib: lokilib.c lokilib.h loki_constants.h Makefile
-	loki-clang -ccc-host-triple loki-elf-linux -O2 -c -o lokilib.o lokilib.c
-	loki-elf-ar rc liblokilib.a lokilib.o
-	loki-elf-ranlib liblokilib.a
-	rm -rf lokilib.o
+libloki.a: lokilib.o
+	loki-elf-ar rc $@ $+
+	loki-elf-ranlib $@
+
+lokilib.o: lokilib.c lokilib.h loki_constants.h
+	loki-clang -ccc-host-triple loki-elf-linux -O2 -c -o $@ $<
 
 clean:
-	rm -rf liblokilib.a
+	rm -f $(wildcard libloki.a *.o)
