@@ -209,16 +209,11 @@ static inline void init_cores_impl(const int first, const int last) {
     "rmtexecute -> 2\n"             // begin remote execution
     "ifp?cregrdi r11, 1\n"          // get core id, and put into r11
     "ifp?andi r11, r11, 0x7\n"      // get core id, and put into r11
-    "ifp?lli r19, 0x0100\n"
-    "ifp?mullw r19, r19, r11\n"     // the memory port to connect 
+    "ifp?slli r19, r11, 8\n"        // the memory port to connect
     "ifp?addu r17, r7, r19\n"       // complete icache memory address using received value
     "ifp?addu r18, r7, r19\n "      // address of second connection
     "ifp?setchmapi 0, r17\n"
     "ifp?setchmapi 1, r18\n"
-    "ifp?nor r0, r0, r0\n"          // FIXME This instruction never executes in lokisim...?
-    "ifp?lli r8, 0x0103\n"          // 0x00050103 = memory configuration command
-    "ifp?lui r8, 0x0005\n"          // 0x00050103 = memory configuration command
-    "ifp?addu r0, r8, r0 -> 0\n"
     "ifp?addu r8, r7, r0\n"         // receive stack pointer
     "ifp?addu r9, r8, r0\n"         // frame pointer = stack pointer
     "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.

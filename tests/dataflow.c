@@ -157,25 +157,21 @@ void core6() {
 
 // Store results
 void core7() {
-
-  // Receive results
-  volatile int i, j;
-  for (i=0; i<NUM_INPUTS; i++) {
-    for (j=0; j<NUM_INPUTS; j++) {
-      int real, imag;
-      RECEIVE(real, 3);
-      RECEIVE(imag, 4);
-
-      real_out[i*NUM_INPUTS + j] = real;
-      imag_out[i*NUM_INPUTS + j] = imag;
-    }
-  }
-
-  // Signal that all results have now been produced.
-  end_parallel_section();
-
-  // All cores are supposed to use DATAFLOW_PACKET macro, which has the behaviour of a loop. Sleeping should suffice.
-  loki_sleep();
+  int i = 0;
+  DATAFLOW_PACKET_2 (7,
+    "addu r25, %2, %0\n"
+    "stw r3, 0(r25) -> 1\n"
+    "addu r25, %3, %0\n"
+    "stw r4, 0(r25) -> 1\n"
+    "seteq.p r0, %0, %1\n"
+    // FIXME: This relies on the implementation of dataflow in that it can cause
+    // core7 to return twice. The library must provide a proper way to do this.
+    "ifp?fetchr end_parallel_section\n" // This will call the method, which will return to this methods caller since r10 will be set.
+    "addui.eop %0, %0, 4\n",
+    "=r"(i), // outputs
+    "0"(i) AND "r"(NUM_INPUTS * NUM_INPUTS * 4) AND "r"(real_out) AND "r"(imag_out), // inputs
+    "r11" AND "r12" AND "r13" AND "r14" AND "r15" AND "r16" AND "r17" AND "r18" AND "r19" AND "r20" AND "r21" AND "r22" AND "r24" AND "r25" AND "memory" // clobbers
+  );
 }
 
 int main(int argc, char** argv) {
@@ -211,15 +207,17 @@ int main(int argc, char** argv) {
   // Do work.
   start_dataflow(&config);
 
-  // Print results.
+  // Check results.
   int i, j;
   for (i=0; i<NUM_INPUTS; i++) {
     for (j=0; j<NUM_INPUTS; j++) {
-      printf("(%d + %di)(%d + %di)\t= %d + %di\n",
-             real_in[i], imag_in[i],
-             real_in[j], imag_in[j],
-             real_out[i*NUM_INPUTS + j], imag_out[i*NUM_INPUTS + j]);
+      if (real_in[i] * real_in[j] - imag_in[i] * imag_in[j] != real_out[i*NUM_INPUTS + j]) {
+        exit(EXIT_FAILURE);
+      }
+      if (real_in[i] * imag_in[j] + real_in[j] * imag_in[i] != imag_out[i*NUM_INPUTS + j]) {
+        exit(EXIT_FAILURE);
+      }
     }
   }
-  exit(0);
+  exit(EXIT_SUCCESS);
 }
