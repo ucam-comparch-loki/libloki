@@ -74,8 +74,8 @@ static inline int loki_receive(const enum Channels channel) {
 }
 
 //! \brief Send an entire struct to another core.
-//! \param struct_ptr structure to send.
-//! \param bytes number of bytes.
+//! \param struct_ptr structure to send. Must be word aligned.
+//! \param bytes number of bytes. Must be a multiple of 4.
 //! \param output must be an integer literal.
 //!
 //! Use \ref loki_send_data instead where possible.
@@ -139,8 +139,8 @@ static inline void loki_send_data(const void *data, size_t size, int output) {
 }
 
 //! \brief Receive an entire struct over the network.
-//! \param struct_ptr destination buffer.
-//! \param bytes number of bytes.
+//! \param struct_ptr destination buffer. Must be word aligned.
+//! \param bytes number of bytes. Must be a multiple of 4.
 //! \param input must be an integer literal.
 //!
 //! Use \ref loki_receive_data instead where possible.
