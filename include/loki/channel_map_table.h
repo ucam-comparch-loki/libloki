@@ -13,14 +13,13 @@
 //! Get an entry from the channel map table.
 static inline channel_t get_channel_map(int id) {
   channel_t result;
-  asm ("getchmap %0, %1" : "=r"(result) : "r"(id));
+  asm ("getchmap %0, %1\nfetchr.eop 0f\n0:\n" : "=r"(result) : "r"(id));
   return result;
 }
 
 //! Set an entry in the channel map table.
 static inline void set_channel_map(int id, channel_t value) {
-  // Includes a no-op to be sure that the entry will take effect.
-  asm ("setchmap %0, %1\nnor r0, r0, r0" : : "r"(value), "r"(id));
+  asm ("setchmap %0, %1\nfetchr.eop 0f\n0:\n" : : "r"(value), "r"(id));
 }
 
 //! Connect this core's output to the specified other core.

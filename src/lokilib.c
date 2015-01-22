@@ -51,7 +51,7 @@ static inline void init_local_tile(const init_config* config) {
     "ifp?subu r8, r8, r14\n"
     "ifp?or r9, r8, r0\n"           // frame pointer = stack pointer
     "ifp?or r10, r7, r0\n"          // set return address
-    "fetchr.eop 0f\n0:"             // NOP just in case compiler puts an ifp? instruction next.
+    "fetchr.eop 0f\n0:\n"           // NOP just in case compiler puts an ifp? instruction next.
   );
 
   loki_send(11, (int)&loki_sleep);
@@ -60,7 +60,7 @@ static inline void init_local_tile(const init_config* config) {
     asm volatile (
       "rmtexecute -> 10\n"          // begin remote execution
       "ifp?fetch r7\n"              // fetch function to perform further init
-      "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
+      "fetchr.eop 0f\n0:\n"         // NOP just in case compiler puts an ifp? instruction next.
     );
 
     loki_send(11, (int)config->config_func);
@@ -108,7 +108,7 @@ static inline void init_remote_tile(const uint tile, const init_config* config) 
     "ifp?or r9, r8, r0\n"           // frame pointer = stack pointer
     "ifp?or r10, r7, r0\n"          // set return address
     "ifp?fetch r7\n"                // fetch receive_init_config
-    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
+    "fetchr.eop 0f\n0:\n"           // NOP just in case compiler puts an ifp? instruction next.
   );
 
   loki_send(11, (int)&loki_sleep);
@@ -141,7 +141,7 @@ inline void loki_init(init_config* config) {
 // defaults.
 void loki_init_default(const uint cores, const setup_func setup) {
   char *stack_pointer; // Core 0's default stack pointer
-  asm ("addu %0, r8, r0\n" : "=r"(stack_pointer) : : );
+  asm ("addu %0, r8, r0\nfetchr.eop 0f\n0:\n" : "=r"(stack_pointer) : : );
   stack_pointer += 0x400 - ((int)stack_pointer & 0x3ff); // Guess at the initial sp
 
   // Instruction channel
@@ -180,7 +180,7 @@ void loki_remote_execute(void* func, int core) {
     "ifp?lli r10, %%lo(loki_sleep)\n"
     "ifp?lui r10, %%hi(loki_sleep)\n"
     "ifp?fetch r7\n"
-    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
+    "fetchr.eop 0f\n0:\n"           // NOP just in case compiler puts an ifp? instruction next.
     :::
   );
 }
@@ -335,7 +335,7 @@ void distribute_to_local_tile(const distributed_func* config) {
       "ifp?addu r13, r7, r0\n"        // receive pointer to arguments
       "ifp?addu r10, r7, r0\n"        // set return address
       "ifp?fetch r7\n"                // fetch function to execute
-      "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
+      "fetchr.eop 0f\n0:\n"           // NOP just in case compiler puts an ifp? instruction next.
       // No clobbers because this is all executed remotely.
     );
   }
@@ -385,7 +385,7 @@ void distribute_to_remote_tile(const int tile, const distributed_func* config) {
     "rmtexecute -> 10\n"            // begin remote execution
     "ifp?addu r10, r7, r0\n"        // set return address
     "ifp?fetch r7\n"                // fetch function to execute
-    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
+    "fetchr.eop 0f\n0:\n"           // NOP just in case compiler puts an ifp? instruction next.
     // No clobbers because this is all executed remotely.
   );
 
@@ -552,7 +552,7 @@ void helper_core(const loop_config* config) {
 }
 
 void simd_member(const loop_config* config, const int core) {
-  const int tile = get_tile_id();
+  const tile_id_t tile = get_tile_id();
 
   if (core == 0) {
     // Determine which role this core is going to play.
@@ -574,11 +574,11 @@ void simd_member(const loop_config* config, const int core) {
 void simd_local_tile(const loop_config* config) {
 
   // Make multicast connections to all other members of the SIMD group.
-  const int tile = get_tile_id();
-  const int cores = (tile*8 < config->cores) ? 8 : (config->cores & 7);
+  const tile_id_t tile = get_tile_id();
+  const int cores = (tile*8+7 < config->cores) ? 8 : (config->cores & 7);
   const unsigned int bitmask = all_cores_except_0(cores);
-  const int ipk_fifos = loki_mcast_address(tile, bitmask, 0);
-  const int data_inputs = loki_mcast_address(tile, bitmask, 7);
+  const channel_t ipk_fifos = loki_mcast_address(tile, bitmask, 0);
+  const channel_t data_inputs = loki_mcast_address(tile, bitmask, 7);
 
   set_channel_map(10, ipk_fifos);
   set_channel_map(11, data_inputs);
@@ -595,7 +595,7 @@ void simd_local_tile(const loop_config* config) {
     "ifp?addu r14, r11, r0\n"       // put core position in argument-passing register
     "ifp?addu r10, r7, r0\n"        // set return address
     "ifp?fetch r7\n"                // fetch function to execute
-    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
+    "fetchr.eop 0f\n0:\n"           // NOP just in case compiler puts an ifp? instruction next.
     // No clobbers because this is all executed remotely.
   );
 
@@ -621,7 +621,7 @@ void simd_remote_tile(const int tile, const loop_config* config) {
     "ifp?addu r13, r7, r0\n"        // receive pointer to configuration info
     "ifp?addu r10, r7, r0\n"        // set return address
     "ifp?fetch r7\n"                // fetch function to execute
-    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
+    "fetchr.eop 0f\n0:\n"           // NOP just in case compiler puts an ifp? instruction next.
     // No clobbers because this is all executed remotely.
   );
 
@@ -674,7 +674,7 @@ void worker_thread(const loop_config* config, const int worker) {
 
 
   // Loop forever, executing the iterations provided. The master will kill the
-  // worker with a "nxipk" when all iterations have finished.
+  // worker by sending -1 as the iteration.
   while (1) {
     request_work();
 
@@ -682,6 +682,7 @@ void worker_thread(const loop_config* config, const int worker) {
     int iteration;
     iteration = loki_receive(7);
 
+    if (iteration == -1) break; // end of work signal
     // Execute the loop iteration.
     config->iteration(iteration, worker);
   }
@@ -713,7 +714,7 @@ void worker_farm(const loop_config* config) {
     "ifp?lli r24, %lo(worker_thread)\n"
     "ifp?lui r24, %hi(worker_thread)\n"
     "ifp?fetch r24\n"               // fetch the worker's task
-    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
+    "fetchr.eop 0f\n0:\n"           // NOP just in case compiler puts an ifp? instruction next.
   );
 
   // Issue workers with loop iterations to work on.
@@ -727,10 +728,12 @@ void worker_farm(const loop_config* config) {
 
   // Wait for all workers to finish their final tasks, and kill them.
   int finished;
-  for (finished = 0; finished < config->cores-1; finished++)
-    receive_any_input();             // wait for each worker to request work
-
-  loki_send_interrupt(2);                           // kill all workers
+  for (finished = 0; finished < config->cores-1; finished++) {
+    const int worker = receive_any_input();             // wait for any worker to request work
+    const int worker_addr = loki_core_address(0, worker, 7);  // compute network address
+    set_channel_map(3, worker_addr);                    // connect
+    loki_send(3, -1);                                      // send end of work
+  }
 
   // Combine each core's partial result before returning.
   config->reduce(config->cores-1);
@@ -820,7 +823,7 @@ void pipeline_loop(const pipeline_config* config) {
     "ifp?lli r24, %lo(pipeline_stage)\n"
     "ifp?lui r24, %hi(pipeline_stage)\n"
     "ifp?fetch r24\n"               // fetch the pipeline stage's task
-    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
+    "fetchr.eop 0f\n0:\n"           // NOP just in case compiler puts an ifp? instruction next.
   );
 
   // Also start this core.
@@ -833,6 +836,7 @@ void pipeline_loop(const pipeline_config* config) {
 #define RECEIVE_ARGUMENT(register) {\
   asm volatile (\
     "addu r13, r" #register ", r0\n"\
+    "fetchr.eop 0f\n0:\n"\
     ::: "r13" /* no inputs, outputs, or clobbered registers */\
   );\
 }
@@ -841,6 +845,7 @@ void pipeline_loop(const pipeline_config* config) {
 #define SEND_RESULT(channel_map_entry) {\
   asm (\
     "addu r0, r11, r0 -> " #channel_map_entry "\n"\
+    "fetchr.eop 0f\n0:\n"\
     ::: /* no inputs, outputs, or clobbered registers */\
   );\
 }
@@ -933,7 +938,7 @@ void dd_pipeline_loop(const dd_pipeline_config* config) {
       "ifp?lli r24, %lo(dd_pipeline_stage)\n"
       "ifp?lui r24, %hi(dd_pipeline_stage)\n"
       "ifp?fetch r24\n"               // fetch the pipeline stage's task
-      "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
+      "fetchr.eop 0f\n0:\n"           // NOP just in case compiler puts an ifp? instruction next.
     );
   }
 
@@ -982,7 +987,7 @@ void start_dataflow(const dataflow_config* config) {
   asm (
     "rmtexecute -> 2\n"
     "ifp?fetch r24\n"
-    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
+    "fetchr.eop 0f\n0:\n"           // NOP just in case compiler puts an ifp? instruction next.
   );
 
 }

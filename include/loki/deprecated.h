@@ -71,6 +71,7 @@ typedef int MemConfig;
 #define RECEIVE_TOKEN(register) {\
   asm volatile (\
     "addu r0, r" #register ", r0\n"\
+    "fetchr.eop 0f\n0:\n"\
     ::: /* no inputs, outputs, or clobbered registers */\
   );\
 }

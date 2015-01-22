@@ -12,6 +12,7 @@
 //! Use a specific syscall function instead where possible.
 #define SYS_CALL(opcode) asm volatile (\
   "syscall " #opcode "\n"\
+  "fetchr.eop 0f\n0:\n"\
 )
 
 #endif

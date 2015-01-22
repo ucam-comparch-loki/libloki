@@ -27,39 +27,6 @@
 int *real_in,  *imag_in;
 int *real_out, *imag_out;
 
-// Distribute operands - this is going to be a huge bottleneck, but I don't care
-// for this test.
-// An alternative mapping would be to have core0 handle real inputs and outputs,
-// and core 7 handle imaginary inputs and outputs.
-void core0() {
-  // Connect to cores 1, 2, 4 and 5 (two connections each, for each operand)
-  // loki_connect(output -> (tile, component, channel))
-  loki_connect(2,   0,1,3);
-  loki_connect(3,   0,1,4);
-  loki_connect(4,   0,2,3);
-  loki_connect(5,   0,2,4);
-  loki_connect(6,   0,4,3);
-  loki_connect(7,   0,4,4);
-  loki_connect(8,   0,5,3);
-  loki_connect(9,   0,5,4);
-
-  // Distribute operands to cores.
-  int i, j;
-  for (i=0; i<NUM_INPUTS; i++) {
-    for (j=0; j<NUM_INPUTS; j++) {
-      const int a = real_in[i], b = imag_in[i];
-      const int c = real_in[j], d = imag_in[j];
-
-      // Multicast would help a little here.
-      loki_send(2, a); loki_send(8, a);
-      loki_send(4, b); loki_send(6, b);
-      loki_send(3, c); loki_send(7, c);
-      loki_send(5, d); loki_send(9, d);
-    }
-  }
-
-}
-
 void multicast_core0() {
   int bitmask, address;
   // send a to cores 1 and 5, input 3
@@ -78,8 +45,6 @@ void multicast_core0() {
   bitmask = 0x24;
   address = loki_mcast_address(0, bitmask, 4);
   set_channel_map(5, address);
-  // vulnerable to missing eop bug!
-  asm volatile ("fetchr.eop 0f\n0:\n");
 
   // Distribute operands to cores.
   int i, j;

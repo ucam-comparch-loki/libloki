@@ -17,6 +17,7 @@
 #define SEND(variable, output) {\
   asm (\
     "addu r0, %0, r0 -> " #output "\n"\
+    "fetchr.eop 0f\n0:\n"\
     :\
     : "r" ((int)variable)\
     :\
@@ -53,6 +54,7 @@ static inline void loki_send(const int channel, int value) {
 #define RECEIVE(variable, input) {\
   asm volatile (\
     "addu %0, r" #input ", r0\n"\
+    "fetchr.eop 0f\n0:\n"\
     : "=r" (variable)\
     :\
     :\
@@ -201,6 +203,7 @@ static inline void loki_receive_data(void *data, size_t size, enum Channels inpu
 #define RMTNXIPK(output) {\
   asm (\
     "rmtnxipk -> " #output "\n"\
+    "fetchr.eop 0f\n0:\n"\
     :::\
   );\
 }
@@ -249,6 +252,7 @@ static inline int receive_any_input() {
   asm volatile (
     "selch r18, 0xFFFFFFFF\n"   // get the channel on which data first arrives
     "irdr %0, r18\n"            // get the data from the channel
+    "fetchr.eop 0f\n0:\n"
     : "=r" (data)
     :
     : "r18"

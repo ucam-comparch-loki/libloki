@@ -28,6 +28,7 @@ static inline uint current_cycle() {
   asm (
     "syscall 0x30\n"
     "or %0, r12, r0\n" // Assuming less than 2^32 cycles, otherwise need r11 too
+    "fetchr.eop 0f\n0:\n"
     : "=r" (val)
     :
     : "r11", "r12"

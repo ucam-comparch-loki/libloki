@@ -27,6 +27,7 @@ enum ControlRegisters {
 #define GET_CONTROL_REGISTER(variable, id) { \
   asm ( \
     "cregrdi %0, " #id "\n" \
+    "fetchr.eop 0f\n0:\n" \
     : "=r"(variable) \
     : \
     : \
@@ -58,6 +59,7 @@ static inline unsigned long get_control_register(enum ControlRegisters id) {
 #define SET_CONTROL_REGISTER(variable, id) { \
   asm ( \
     "cregwri %0, " #id "\n" \
+    "fetchr.eop 0f\n0:\n" \
     : \
     : "r"(variable) \
     : \
