@@ -82,13 +82,16 @@ static inline int loki_receive(const enum Channels channel) {
 // TODO: I can't get this to work properly without hard-coded registers.
 #define SEND_STRUCT(struct_ptr, bytes, output) {\
   asm volatile (\
-    "or r12, %0, r0\n"\
-    "addu r11, %0, %1\n"\
-    "ldw 0(r12) -> 1\n"\
-    "addui r12, r12, 4\n"\
+    "fetchpstr 0f\n"\
+    "addui r12, %0, 4\n"\
+    "addu.eop r11, %0, %1\n"\
+    "0:\n"\
+    "ldw -4(r12) -> 1\n"\
     "setlt.p r0, r12, r11\n"\
     "or r0, r2, r0 -> " #output "\n"\
-    "ifp?ibjmp -16\n"\
+    "if!p?fetchr 0f\n"\
+    "addui.eop r12, r12, 4\n"\
+    "0:\n"\
     : \
     : "r" (struct_ptr), "r" (bytes)\
     : "r11", "r12"\
@@ -100,9 +103,23 @@ static inline int loki_receive(const enum Channels channel) {
 //! \param size number of words.
 //! \param output channel to send on.
 static inline void loki_send_words(const int *data, size_t size, int output) {
-  size_t i;
-  for (i = 0; i != size; i++) {
-    loki_send(data[i], output);
+  switch (output) {
+  case 0: SEND_STRUCT(data, size * 4, 0); return;
+  case 1: SEND_STRUCT(data, size * 4, 1); return;
+  case 2: SEND_STRUCT(data, size * 4, 2); return;
+  case 3: SEND_STRUCT(data, size * 4, 3); return;
+  case 4: SEND_STRUCT(data, size * 4, 4); return;
+  case 5: SEND_STRUCT(data, size * 4, 5); return;
+  case 6: SEND_STRUCT(data, size * 4, 6); return;
+  case 7: SEND_STRUCT(data, size * 4, 7); return;
+  case 8: SEND_STRUCT(data, size * 4, 8); return;
+  case 9: SEND_STRUCT(data, size * 4, 9); return;
+  case 10: SEND_STRUCT(data, size * 4, 10); return;
+  case 11: SEND_STRUCT(data, size * 4, 11); return;
+  case 12: SEND_STRUCT(data, size * 4, 12); return;
+  case 13: SEND_STRUCT(data, size * 4, 13); return;
+  case 14: SEND_STRUCT(data, size * 4, 14); return;
+  default: assert(0); return;
   }
 }
 //! \brief Send an entire struct to another core.
@@ -131,12 +148,15 @@ static inline void loki_send_data(const void *data, size_t size, int output) {
   int end_of_struct;\
   void* struct_ptr_copy;\
   asm volatile (\
+    "fetchpstr 0f\n"\
     "addu %0, %2, %3\n"\
-    "or %1, %2, r0\n"\
-    "stw r" #input ", 0(%1) -> 1\n"\
-    "addui %1, %1, 4\n"\
+    "addui.eop %1, %2, 4\n"\
+    "0:\n"\
+    "stw r" #input ", -4(%1) -> 1\n"\
     "setlt.p r0, %1, %0\n"\
-    "ifp?ibjmp -12\n"\
+    "if!p?fetchr 0f\n"\
+    "addui.eop %1, %1, 4\n"\
+    "0:\n"\
     : "=r" (end_of_struct), "=r" (struct_ptr_copy)\
     : "r" (struct_ptr), "r" (bytes)\
     :\
@@ -148,9 +168,14 @@ static inline void loki_send_data(const void *data, size_t size, int output) {
 //! \param size number of words.
 //! \param input channel to receive on.
 static inline void loki_receive_words(int *data, size_t size, enum Channels input) {
-  size_t i;
-  for (i = 0; i != size; i++) {
-    data[i] = loki_receive(input);
+  switch (input) {
+  case CH_REGISTER_2: RECEIVE_STRUCT(data, size * 4, 2); return;
+  case CH_REGISTER_3: RECEIVE_STRUCT(data, size * 4, 3); return;
+  case CH_REGISTER_4: RECEIVE_STRUCT(data, size * 4, 4); return;
+  case CH_REGISTER_5: RECEIVE_STRUCT(data, size * 4, 5); return;
+  case CH_REGISTER_6: RECEIVE_STRUCT(data, size * 4, 6); return;
+  case CH_REGISTER_7: RECEIVE_STRUCT(data, size * 4, 7); return;
+  default: assert(0); return;
   }
 }
 

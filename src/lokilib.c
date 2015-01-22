@@ -24,8 +24,8 @@ static inline void init_local_tile(const init_config* config) {
   int data_mem = config->data_mem | (tile << 20);
   uint stack_size = config->stack_size;
   uint stack_pointer = (uint)config->stack_pointer - tile*CORES_PER_TILE*stack_size;
-  int inst_mcast = loki_mcast_address(tile, all_cores_except_0(cores), 0);
-  int data_mcast = loki_mcast_address(tile, all_cores_except_0(cores), 7);
+  channel_t inst_mcast = loki_mcast_address(tile, all_cores_except_0(cores), 0);
+  channel_t data_mcast = loki_mcast_address(tile, all_cores_except_0(cores), 7);
 
   set_channel_map(10, inst_mcast);
   set_channel_map(11, data_mcast);
