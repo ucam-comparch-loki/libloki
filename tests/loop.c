@@ -2,14 +2,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define ITERATIONS 1000
-
 // This program computes the sum of integers in the range 0-1000 using a
 // parallel loop.
 
 // Each core needs to keep track of its own sum. These can all be combined when
 // all cores have finished.
 int* partial_sum;
+int iterations;
 
 // A single iteration of the SIMD loop.
 void iteration(int iteration, int coreid) {
@@ -25,8 +24,8 @@ void reduce(int num_cores) {
   for (i=0; i<num_cores; i++)
     sum += partial_sum[i];
 
-  if (sum != ((ITERATIONS - 1) * ITERATIONS) / 2) {
-    fprintf(stderr, "Incorrect sum(1 to %d) of %d not %d.\n", ITERATIONS - 1, sum, ((ITERATIONS - 1) * ITERATIONS) / 2);
+  if (sum != ((iterations - 1) * iterations) / 2) {
+    fprintf(stderr, "Incorrect sum(1 to %d) of %d not %d.\n", iterations - 1, sum, ((iterations - 1) * iterations) / 2);
     exit(EXIT_FAILURE);
   }
 }
@@ -42,7 +41,7 @@ int main (int argc, char** argv) {
   // Prepare all information needed to execute the loop.
   loop_config loop;
   loop.cores = 8;
-  loop.iterations = ITERATIONS;
+  loop.iterations = 100;
   loop.initialise = 0;
   loop.helper_init = 0;
   loop.iteration = &iteration;
@@ -54,17 +53,32 @@ int main (int argc, char** argv) {
   // Execute parallel loop.
 
   // A SIMD loop can have 1-8 cores, inclusive.
-  partial_sum = calloc(loop.cores, sizeof(int));
-  simd_loop(&loop);
-  free(partial_sum);
+  for (loop.cores = 1; loop.cores <= 8; loop.cores++) {
+    partial_sum = calloc(loop.cores, sizeof(int));
+    iterations = loop.iterations = 100;
+    simd_loop(&loop);
+    free(partial_sum);
+
+    partial_sum = calloc(loop.cores, sizeof(int));
+    iterations = loop.iterations = 2;
+    simd_loop(&loop);
+    free(partial_sum);
+  }
 
   // A worker farm can have 2-6 cores, inclusive (need at least 1 master and 1
   // worker, and the number of workers is currently limited by the number of
   // connections which can simultaneously be made to the master core).
-  loop.cores = 6;
-  partial_sum = calloc(loop.cores, sizeof(int));
-  worker_farm(&loop);
-  free(partial_sum);
+  for (loop.cores = 2; loop.cores <= 6; loop.cores++) {
+    partial_sum = calloc(loop.cores, sizeof(int));
+    iterations = loop.iterations = 100;
+    worker_farm(&loop);
+    free(partial_sum);
+
+    partial_sum = calloc(loop.cores, sizeof(int));
+    iterations = loop.iterations = 2;
+    worker_farm(&loop);
+    free(partial_sum);
+  }
 
   exit(EXIT_SUCCESS);
 }

@@ -575,7 +575,7 @@ void simd_local_tile(const loop_config* config) {
 
   // Make multicast connections to all other members of the SIMD group.
   const tile_id_t tile = get_tile_id();
-  const int cores = (tile*8+7 < config->cores) ? 8 : (config->cores & 7);
+  const int cores = cores_this_tile(config->cores, tile);
   const unsigned int bitmask = all_cores_except_0(cores);
   const channel_t ipk_fifos = loki_mcast_address(tile, bitmask, 0);
   const channel_t data_inputs = loki_mcast_address(tile, bitmask, 7);
@@ -632,7 +632,7 @@ void simd_loop(const loop_config* config) {
 
   if (config->cores > 1) {
     int tile;
-    for (tile = 1; tile*8 < config->cores; tile++) {
+    for (tile = 1; tile < num_tiles(config->cores); tile++) {
       simd_remote_tile(tile, config);
     }
 
@@ -870,12 +870,21 @@ void dd_pipeline_stage(const dd_pipeline_config* config, const int stage) {
   if (config->initialise && config->initialise[stage])
     config->initialise[stage]();
 
-  void* my_func = config->stage_tasks[stage];
+  dd_pipeline_func my_func = config->stage_tasks[stage];
 
   // Stage 0 is in charge of supplying the data to the pipeline, so it should
   // know how much there is and how many iterations to perform.
   if (stage == 0) {
-    execute(my_func);
+    int arg = 0;
+    while (1) {
+      int result = my_func(arg);
+      if (result == config->end_of_stream_token) {
+        if (have_successor)
+          loki_send(2, result);
+        break;
+      }
+      arg++;
+    }
   }
   // All other cores enter an infinite loop, working with the data they receive
   // for as long as it arrives. At some point one core must call the
@@ -895,12 +904,12 @@ void dd_pipeline_stage(const dd_pipeline_config* config, const int stage) {
       }
 
       // Execute this iteration.
-      ((void(*)(int))my_func)(arg);
+      int result = my_func(arg);
 
       // If there is a subsequent core in the pipeline, send it an argument to
       // work on.
       if (have_successor)
-        SEND_RESULT(2);
+        loki_send(2, result);
     }
   }
 
@@ -930,9 +939,8 @@ void dd_pipeline_loop(const dd_pipeline_config* config) {
     asm (
       "rmtexecute -> 2\n"             // begin remote execution
       "ifp?addu r13, r7, r0\n"        // receive pointer to configuration info
-      "ifp?cregrdi r11, 1\n"          // get core id, and put into r11
-      "ifp?andi r11, r11, 0x7\n"      // get core id, and put into r11
-      "ifp?addu r14, r11, r0\n"
+      "ifp?cregrdi r11, 1\n"          // get core id, and put into r14
+      "ifp?andi r14, r11, 0x7\n"      // get core id, and put into r14
       "ifp?lli r10, %lo(loki_sleep)\n"     // set return address - sleep when finished
       "ifp?lui r10, %hi(loki_sleep)\n"     // set return address - sleep when finished
       "ifp?lli r24, %lo(dd_pipeline_stage)\n"

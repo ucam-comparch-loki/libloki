@@ -20,8 +20,10 @@
 typedef void (*pipeline_init_func)(void);
 //! Function to execute a stage.
 typedef void (*pipeline_func)(int iteration);
-//! Function to execute a data driven stage (arbitrary inputs an outputs.).
-typedef void  *dd_pipeline_func;      // Allow any arguments and return values
+//! \brief Function to execute a data driven stage (input from previous stage, output to next).
+//!
+//! The first stage always gets an incrementing value at the input.
+typedef int  (*dd_pipeline_func)(int arg);
 //! Function to tidy after each stage.
 typedef void (*pipeline_tidy_func)(void);
 

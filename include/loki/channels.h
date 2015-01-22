@@ -46,13 +46,13 @@ static inline enum MulticastDestinations all_cores_except_0(uint num_cores) {
 }
 
 //! Return the minimum number of tiles required to hold the given number of cores.
-static inline uint num_tiles(const uint cores) {
+static inline unsigned int num_tiles(const unsigned int cores) {
   return ((cores - 1)/CORES_PER_TILE) + 1;
 }
 
 //! Calculate the number of cores that are active on a given tile, given a total
 //! number of active cores.
-static inline uint cores_this_tile(const uint cores, const int tile) {
+static inline unsigned int cores_this_tile(const unsigned int cores, const tile_id_t tile) {
   return (cores - tile * CORES_PER_TILE > CORES_PER_TILE)
        ? CORES_PER_TILE
        : cores - tile * CORES_PER_TILE;
