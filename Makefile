@@ -7,8 +7,9 @@ $(TARGET): $(OBJS) | lib
 	loki-elf-ranlib $@
 
 build/%.o: src/%.c $(wildcard include/loki/*.h) | build
-	loki-clang -ccc-host-triple loki-elf-linux -O3 -Iinclude -c -o $@ $<
+	loki-clang -ccc-host-triple loki-elf-linux -O3 -Iinclude -c -Wall -o $@ $<
 
+.PHONY: clean
 clean:
 	rm -f $(wildcard $(TARGET) *.o)
 	rm -rf $(wildcard lib build)
@@ -17,3 +18,7 @@ lib:
 	mkdir $@
 build:
 	mkdir $@
+
+.PHONY: docs
+docs:
+	doxygen

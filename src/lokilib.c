@@ -27,13 +27,13 @@ static inline void init_local_tile(const init_config* config) {
   int inst_mcast = loki_mcast_address(tile, all_cores_except_0(cores), 0);
   int data_mcast = loki_mcast_address(tile, all_cores_except_0(cores), 7);
 
-  SET_CHANNEL_MAP(10, inst_mcast);
-  SET_CHANNEL_MAP(11, data_mcast);
+  set_channel_map(10, inst_mcast);
+  set_channel_map(11, data_mcast);
 
-  SEND(inst_mem, 11);
-  SEND(data_mem, 11);
-  SEND(stack_pointer, 11);
-  SEND(stack_size, 11);
+  loki_send(11, inst_mem);
+  loki_send(11, data_mem);
+  loki_send(11, stack_pointer);
+  loki_send(11, stack_size);
   // Still have to send function pointer, but only have 4 buffer spaces.
   // Wait until after sending instructions to send more data.
 
@@ -51,11 +51,10 @@ static inline void init_local_tile(const init_config* config) {
     "ifp?subu r8, r8, r14\n"
     "ifp?or r9, r8, r0\n"           // frame pointer = stack pointer
     "ifp?or r10, r7, r0\n"          // set return address
-//    "ifp?fetch r7\n"                // fetch function to perform further init
-    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
+    "fetchr.eop 0f\n0:"             // NOP just in case compiler puts an ifp? instruction next.
   );
 
-  SEND(&loki_sleep, 11);
+  loki_send(11, (int)&loki_sleep);
 
   if (config->config_func != NULL) {
     asm volatile (
@@ -64,7 +63,7 @@ static inline void init_local_tile(const init_config* config) {
       "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
     );
 
-    SEND(config->config_func, 11);
+    loki_send(11, (int)config->config_func);
     config->config_func();
   }
 }
@@ -731,7 +730,6 @@ void worker_thread(const loop_config* config, const int worker) {
   //   1: instruction packet cache
   //   2: channel used to communicate with memory
 
-  int channel; // channel of master core to connect to
   int address = loki_core_address(0, 0, get_core_id() + 2);
   SET_CHANNEL_MAP(2, address);
 
@@ -910,7 +908,6 @@ void pipeline_loop(const pipeline_config* config) {
 
 void dd_pipeline_stage(const dd_pipeline_config* config, const int stage) {
 
-  const int have_predecessor = (stage > 0);
   const int have_successor = (stage < config->cores - 1);
 
   // Address to connect to. Most cores connect to the next stage in the pipeline
@@ -953,10 +950,8 @@ void dd_pipeline_stage(const dd_pipeline_config* config, const int stage) {
         break;
       }
 
-      PUT_IN_REG(arg, 13);  // r13 is the first argument register.
-
       // Execute this iteration.
-      execute(my_func);
+      ((void(*)(int))my_func)(arg);
 
       // If there is a subsequent core in the pipeline, send it an argument to
       // work on.
@@ -1127,36 +1122,4 @@ void loki_spawn(void* func, const int address, const int argc, ...) {
 
   va_end(argp);
 
-}
-
-// Store multiple data values in the extended register file.
-//   data:         pointer to the data
-//   len:          the number of elements to store
-//   reg:          the position in the extended register file to store the first value
-//
-// Note: three separate versions are needed to force the compiler to use the
-// correct load instruction: we do not support unaligned loads, so can't always
-// use the integer version.
-void scratchpad_block_store_chars(char* data, size_t len, uint reg) {
-  uint currReg;
-  char* currPtr;
-  for (currReg = reg, currPtr = data; currReg < reg+len; currReg++, currPtr++) {
-    // TODO: load 4 values at once, then split into registers
-    scratchpad_write(currReg, *currPtr);
-  }
-}
-void scratchpad_block_store_shorts(short* data, size_t len, uint reg) {
-  uint currReg;
-  short* currPtr;
-  for (currReg = reg, currPtr = data; currReg < reg+len; currReg++, currPtr++) {
-    // TODO: load 2 values at once, then split into registers
-    scratchpad_write(currReg, *currPtr);
-  }
-}
-void scratchpad_block_store_ints(int* data, size_t len, uint reg) {
-  uint currReg;
-  int* currPtr;
-  for (currReg = reg, currPtr = data; currReg < reg+len; currReg++, currPtr++) {
-    scratchpad_write(currReg, *currPtr);
-  }
 }
