@@ -5,8 +5,19 @@
 #define LOKI_DEPRECATED_H_
 
 #include <loki/channel_map_table.h>
+#include <loki/init.h>
 #include <loki/scratchpad.h>
 #include <loki/types.h>
+
+//! \brief Prepare a given number of cores to execute code later in the program.
+//!
+//! This must be the first thing executed at the start of the program (for now).
+//!
+//! \deprecated
+//! Use loki_init_default(num_cores, 0) instead.
+static inline void init_cores(const int num_cores) {
+  loki_init_default(num_cores, 0);
+}
 
 //! \deprecated type for memory configurations. Use specific types like \ref MemConfigType instead.
 typedef int MemConfig;

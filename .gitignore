@@ -2,4 +2,11 @@
 *.a
 *.o
 *.elf
+build/
+lib/
+# Doxygen
+html/
+latex/
+# Vim
+*.swp
 

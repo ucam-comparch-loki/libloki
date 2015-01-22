@@ -33,7 +33,7 @@ void start_dataflow(const dataflow_config* config);
 //! so it is now possible to break cores out of their infinite loops.
 //!
 //! Currently used by the dataflow and data-driven pipeline patterns.
-void end_parallel_section();
+void end_parallel_section(void);
 
 //! \brief Define an instruction packet which should be executed repeatedly.
 //! \param core integer literal, the core this packet runs on.

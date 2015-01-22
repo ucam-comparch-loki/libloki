@@ -16,7 +16,9 @@
 //                                Core 7
 //                             store outputs
 
-#include <loki/lokilib.h>
+#include <loki/channels.h>
+#include <loki/patterns/dataflow.h>
+#include <loki/init.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -31,15 +33,15 @@ int *real_out, *imag_out;
 // and core 7 handle imaginary inputs and outputs.
 void core0() {
   // Connect to cores 1, 2, 4 and 5 (two connections each, for each operand)
-  // CONNECT(output -> (tile, component, channel))
-  CONNECT(2,   0,1,3);
-  CONNECT(3,   0,1,4);
-  CONNECT(4,   0,2,3);
-  CONNECT(5,   0,2,4);
-  CONNECT(6,   0,4,3);
-  CONNECT(7,   0,4,4);
-  CONNECT(8,   0,5,3);
-  CONNECT(9,   0,5,4);
+  // loki_connect(output -> (tile, component, channel))
+  loki_connect(2,   0,1,3);
+  loki_connect(3,   0,1,4);
+  loki_connect(4,   0,2,3);
+  loki_connect(5,   0,2,4);
+  loki_connect(6,   0,4,3);
+  loki_connect(7,   0,4,4);
+  loki_connect(8,   0,5,3);
+  loki_connect(9,   0,5,4);
 
   // Distribute operands to cores.
   int i, j;
@@ -49,10 +51,10 @@ void core0() {
       const int c = real_in[j], d = imag_in[j];
 
       // Multicast would help a little here.
-      SEND(a, 2); SEND(a, 8);
-      SEND(b, 4); SEND(b, 6);
-      SEND(c, 3); SEND(c, 7);
-      SEND(d, 5); SEND(d, 9);
+      loki_send(2, a); loki_send(8, a);
+      loki_send(4, b); loki_send(6, b);
+      loki_send(3, c); loki_send(7, c);
+      loki_send(5, d); loki_send(9, d);
     }
   }
 
@@ -63,19 +65,19 @@ void multicast_core0() {
   // send a to cores 1 and 5, input 3
   bitmask = 0x22;
   address = loki_mcast_address(0, bitmask, 3);
-  SET_CHANNEL_MAP(2, address);
+  set_channel_map(2, address);
   // send b to cores 2 and 4, input 3
   bitmask = 0x14;
   address = loki_mcast_address(0, bitmask, 3);
-  SET_CHANNEL_MAP(3, address);
+  set_channel_map(3, address);
   // send c to cores 1 and 4, input 4
   bitmask = 0x12;
   address = loki_mcast_address(0, bitmask, 4);
-  SET_CHANNEL_MAP(4, address);
+  set_channel_map(4, address);
   // send d to cores 2 and 5, input 4
   bitmask = 0x24;
   address = loki_mcast_address(0, bitmask, 4);
-  SET_CHANNEL_MAP(5, address);
+  set_channel_map(5, address);
   // vulnerable to missing eop bug!
   asm volatile ("fetchr.eop 0f\n0:\n");
 
@@ -86,19 +88,23 @@ void multicast_core0() {
       const int a = real_in[i], b = imag_in[i];
       const int c = real_in[j], d = imag_in[j];
 
-      SEND(a, 2);
-      SEND(b, 3);
-      SEND(c, 4);
-      SEND(d, 5);
+      loki_send(2, a);
+      loki_send(3, b);
+      loki_send(4, c);
+      loki_send(5, d);
     }
   }
 
+  // Wait for finished token from core7.
+  loki_receive_token(CH_REGISTER_3);
+
+  end_parallel_section();
 }
 
 // a * c
 void core1() {
   // Connect to core 3
-  CONNECT(2,   0,3,3);
+  loki_connect(2,   0,3,3);
 
   DATAFLOW_PACKET (1,
     "mullw.eop r0, r3, r4 -> 2\n"
@@ -108,7 +114,7 @@ void core1() {
 // b * d
 void core2() {
   // Connect to core 3
-  CONNECT(2,   0,3,4);
+  loki_connect(2,   0,3,4);
 
   DATAFLOW_PACKET (2,
     "mullw.eop r0, r3, r4 -> 2\n"
@@ -118,7 +124,7 @@ void core2() {
 // ac - bd
 void core3() {
   // Connect to core 7
-  CONNECT(2,   0,7,3);
+  loki_connect(2,   0,7,3);
 
   DATAFLOW_PACKET (3,
     "subu.eop r0, r3, r4 -> 2\n"
@@ -128,7 +134,7 @@ void core3() {
 // b * c
 void core4() {
   // Connect to core 6
-  CONNECT(2,   0,6,3);
+  loki_connect(2,   0,6,3);
 
   DATAFLOW_PACKET (4,
     "mullw.eop r0, r3, r4 -> 2\n"
@@ -138,7 +144,7 @@ void core4() {
 // a * d
 void core5() {
   // Connect to core 6
-  CONNECT(2,   0,6,4);
+  loki_connect(2,   0,6,4);
 
   DATAFLOW_PACKET (5,
     "mullw.eop r0, r3, r4 -> 2\n"
@@ -148,7 +154,7 @@ void core5() {
 // bc + ad
 void core6() {
   // Connect to core 7
-  CONNECT(2,   0,7,4);
+  loki_connect(2,   0,7,4);
 
   DATAFLOW_PACKET (6,
     "addu.eop r0, r3, r4 -> 2\n"
@@ -157,26 +163,29 @@ void core6() {
 
 // Store results
 void core7() {
-  int i = 0;
-  DATAFLOW_PACKET_2 (7,
-    "addu r25, %2, %0\n"
+  // Connect to core 0
+  loki_connect(2, 0, COMPONENT_CORE_0, CH_REGISTER_3);
+
+  DATAFLOW_PACKET_3 (7,
+    "addu r25, %1, r0\n"
+    "addu r26, %2, r0\n"
+    ,
     "stw r3, 0(r25) -> 1\n"
-    "addu r25, %3, %0\n"
-    "stw r4, 0(r25) -> 1\n"
-    "seteq.p r0, %0, %1\n"
-    // FIXME: This relies on the implementation of dataflow in that it can cause
-    // core7 to return twice. The library must provide a proper way to do this.
-    "ifp?fetchr end_parallel_section\n" // This will call the method, which will return to this methods caller since r10 will be set.
-    "addui.eop %0, %0, 4\n",
-    "=r"(i), // outputs
-    "0"(i) AND "r"(NUM_INPUTS * NUM_INPUTS * 4) AND "r"(real_out) AND "r"(imag_out), // inputs
-    "r11" AND "r12" AND "r13" AND "r14" AND "r15" AND "r16" AND "r17" AND "r18" AND "r19" AND "r20" AND "r21" AND "r22" AND "r24" AND "r25" AND "memory" // clobbers
+    "stw r4, 0(r26) -> 1\n"
+    "addui r25, r25, 4\n"
+    "seteq.p r0, r26, %0\n"
+    "ifp?or r0, r0, r0 -> 2\n" // Send a finished token
+    "addui.eop r26, r26, 4\n"
+    ,
+    , // outputs
+    "r"(imag_out + NUM_INPUTS * NUM_INPUTS - 1) AND "r"(real_out) AND "r"(imag_out), // inputs
+    "r11" AND "r12" AND "r13" AND "r14" AND "r15" AND "r16" AND "r17" AND "r18" AND "r19" AND "r20" AND "r21" AND "r22" AND "r24" AND "r25" AND "r26" AND "memory" // clobbers
   );
 }
 
 int main(int argc, char** argv) {
 
-  init_cores(8);
+  loki_init_default(8, NULL);
 
   // Initialise input/output arrays.
   real_in = malloc(NUM_INPUTS * sizeof(int));

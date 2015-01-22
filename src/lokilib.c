@@ -23,7 +23,7 @@ static inline void init_local_tile(const init_config* config) {
   int inst_mem = config->inst_mem | (tile << 20);
   int data_mem = config->data_mem | (tile << 20);
   uint stack_size = config->stack_size;
-  uint stack_pointer = config->stack_pointer - tile*CORES_PER_TILE*stack_size;
+  uint stack_pointer = (uint)config->stack_pointer - tile*CORES_PER_TILE*stack_size;
   int inst_mcast = loki_mcast_address(tile, all_cores_except_0(cores), 0);
   int data_mcast = loki_mcast_address(tile, all_cores_except_0(cores), 7);
 
@@ -82,15 +82,15 @@ static inline void init_remote_tile(const uint tile, const init_config* config) 
   // Connect to core 0 in the tile.
   int inst_fifo = loki_core_address(tile, 0, 0);
   int data_input = loki_core_address(tile, 0, 7);
-  SET_CHANNEL_MAP(10, inst_fifo);
-  SET_CHANNEL_MAP(11, data_input);
+  set_channel_map(10, inst_fifo);
+  set_channel_map(11, data_input);
 
   // Initialise core 0 (stack, memory connections, etc)
-  SEND(config->inst_mem, 11);
-  SEND(config->data_mem, 11);
-  SEND(config->mem_config, 11);
+  loki_send(11, config->inst_mem);
+  loki_send(11, config->data_mem);
+  loki_send(11, config->mem_config);
 
-  SEND(config->stack_pointer - tile*CORES_PER_TILE*config->stack_size, 11);
+  loki_send(11, (int)config->stack_pointer - tile*CORES_PER_TILE*config->stack_size);
   // Still have to send function pointers, but only have 4 buffer spaces.
   // Wait until after sending instructions to send more data.
 
@@ -111,8 +111,8 @@ static inline void init_remote_tile(const uint tile, const init_config* config) 
     "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
   );
 
-  SEND(&loki_sleep, 11);
-  SEND(&receive_init_config, 11);
+  loki_send(11, (int)&loki_sleep);
+  loki_send(11, (int)&receive_init_config);
   SEND_STRUCT(config, sizeof(init_config), 11);
 
 }
@@ -120,12 +120,13 @@ static inline void init_remote_tile(const uint tile, const init_config* config) 
 inline void loki_init(init_config* config) {
   assert(config->cores > 0);
 
-  config->stack_pointer = (int)malloc(config->stack_size * config->cores)
-                                   + (config->stack_size * config->cores);
+  if (config->stack_pointer == 0)
+    config->stack_pointer = (char *)malloc(config->stack_size * config->cores)
+                                        + (config->stack_size * config->cores);
 
   // Give each core connections to memory and a stack.
   if (config->cores > 1) {
-    uint tile;
+    tile_id_t tile;
     for (tile = 1; tile*CORES_PER_TILE < config->cores; tile++) {
       init_remote_tile(tile, config);
     }
@@ -139,89 +140,27 @@ inline void loki_init(init_config* config) {
 // A wrapper for loki_init which fills in most of the values with sensible
 // defaults.
 void loki_init_default(const uint cores, const setup_func setup) {
-
-  uint tile = get_tile_id();
-  uint core = 0;
+  char *stack_pointer; // Core 0's default stack pointer
+  asm ("addu %0, r8, r0\n" : "=r"(stack_pointer) : : );
+  stack_pointer += 0x400 - ((int)stack_pointer & 0x3ff); // Guess at the initial sp
 
   // Instruction channel
-  int addr0 = loki_mem_address(CH_IPK_CACHE, tile, 8, core, GROUPSIZE_8, LINESIZE_32);
-  int config0 = loki_mem_config(ASSOCIATIVITY_1, LINESIZE_32, CACHE, GROUPSIZE_8);
-  SET_CHANNEL_MAP(0, addr0);
-//  SEND(config0, 0); // reconfiguration invalidates cache contents
+  channel_t addr0 = get_channel_map(0);
 
   // Data channel
-  int addr1 = loki_mem_address(CH_REGISTER_2, tile, 8, core, GROUPSIZE_8, LINESIZE_32);
-  SET_CHANNEL_MAP(1, addr1);
+  channel_t addr1 = get_channel_map(1);
 
   init_config* config = malloc(sizeof(init_config));
   config->cores = cores;
-  config->stack_pointer = 0x400000;
+  config->stack_pointer = stack_pointer;
   config->stack_size = 0x12000;
   config->inst_mem = addr0;
   config->data_mem = addr1;
-  config->mem_config = config0;
+  config->mem_config = loki_mem_config(ASSOCIATIVITY_1, LINESIZE_32, CACHE, GROUPSIZE_8);
   config->config_func = setup;
 
   loki_init(config);
 
-}
-
-// Initialise each core between "first" (inclusive) and "last" (exclusive). This
-// involves giving each core two connections to memory - one for instructions
-// and one for data - and also initialising stack and frame pointers.
-// This must be executed right at the beginning of the program, as it needs to
-// share the current cache configuration, which is assumed to still be in a
-// register.
-static inline void init_cores_impl(const int first, const int last) {
-
-  int stack_pointer; // Core 0's default stack pointer
-  asm ("addu %0, r8, r0\n" : "=r"(stack_pointer) : : );
-  stack_pointer += 0x400 - (stack_pointer & 0x3ff); // Guess at the initial sp
-  int bitmask = 0;              // Bitmask of cores to send instructions to
-
-  int current;
-  for (current = first; current < last; current++) {
-    CONNECT(3,   0,current,7);  // Data input
-
-    // Give each worker a different stack pointer
-    stack_pointer -= 0x42000;   // Extra 0x2000 puts stacks in different banks -- or does it?
-
-    asm (
-      "addu r0, r20, r0 -> 3\n"       // send icache configuration (assumes it is still in r20)
-      "addu r0, r21, r0 -> 3\n"       // send dcache configuration (assumes it is still in r21)
-      "addu r0, %0, r0 -> 3\n"        // send core its own stack pointer
-      : /* no outputs */
-      : "r" (stack_pointer)
-      : /* nothing clobbered */
-    );
-
-    bitmask |= (1 << current);
-  }
-
-  // Set up a multicast connection to all instruction FIFOs
-  int fifos = loki_mcast_address(0, bitmask, 0);
-  SET_CHANNEL_MAP(2, fifos);
-
-  // Could reduce the size of this by only setting up instruction memory
-  // connection, and then fetching a packet which does the rest.
-  asm (
-    "rmtexecute -> 2\n"             // begin remote execution
-    "ifp?cregrdi r11, 1\n"          // get core id, and put into r11
-    "ifp?andi r11, r11, 0x7\n"      // get core id, and put into r11
-    "ifp?slli r19, r11, 8\n"        // the memory port to connect
-    "ifp?addu r17, r7, r19\n"       // complete icache memory address using received value
-    "ifp?addu r18, r7, r19\n "      // address of second connection
-    "ifp?setchmapi 0, r17\n"
-    "ifp?setchmapi 1, r18\n"
-    "ifp?addu r8, r7, r0\n"         // receive stack pointer
-    "ifp?addu r9, r8, r0\n"         // frame pointer = stack pointer
-    "nor r0, r0, r0\n"              // NOP just in case compiler puts an ifp? instruction next.
-  );
-}
-
-void init_cores(const int num_cores) {
-  if (num_cores > 1)
-    init_cores_impl(1, num_cores);
 }
 
 // Get a core to execute a function. The remote core must already have all of
@@ -229,11 +168,11 @@ void init_cores(const int num_cores) {
 void loki_remote_execute(void* func, int core) {
   const int ipk_fifo = loki_core_address(0, core, 0);
   const int data_input = loki_core_address(0, core, 7);
-  SET_CHANNEL_MAP(2, ipk_fifo);
-  SET_CHANNEL_MAP(3, data_input);
+  set_channel_map(2, ipk_fifo);
+  set_channel_map(3, data_input);
 
   // Send the function address to the remote core.
-  SEND(func, 3);
+  loki_send(3, (int)func);
 
   // Tell the remote core to fetch the provided function, and sleep when done.
   asm (
@@ -260,8 +199,8 @@ void end_parallel_section() {
   // Current implementation is to send a token to core 0, input 7.
   // wait_end_parallel_section() must therefore execute on core 0.
   int address = loki_core_address(0, 0, 7);
-  SET_CHANNEL_MAP(2, address);
-  SEND_TOKEN(2);
+  set_channel_map(2, address);
+  loki_send_token(2);
 
 }
 
@@ -279,15 +218,15 @@ void loki_sync(const uint cores) {
   // neighbour. (A tree structure would be more efficient, but there isn't much
   // difference with so few cores.)
   if ((core < CORES_PER_TILE-1) && (tile*CORES_PER_TILE + core < cores-1))
-    RECEIVE_TOKEN(6);
+    loki_receive_token(6);
 
   // All cores except the first one send a token to their other neighbour
   // (after setting up a connection).
   if (core > 0) {
     int address = loki_core_address(tile, core-1, 6);
-    SET_CHANNEL_MAP(10, address);
-    SEND_TOKEN(10);
-    RECEIVE_TOKEN(6);
+    set_channel_map(10, address);
+    loki_send_token(10);
+    loki_receive_token(6);
   }
 
   // All core 0s then synchronise between tiles using the same process.
@@ -295,13 +234,13 @@ void loki_sync(const uint cores) {
     uint tiles = num_tiles(cores);
 
     if (tile < tiles-1)
-      RECEIVE_TOKEN(5);
+      loki_receive_token(5);
 
     if (tile > 0) {
       int address = loki_core_address(tile-1, 0, 5);
-      SET_CHANNEL_MAP(10, address);
-      SEND_TOKEN(10);
-      RECEIVE_TOKEN(5);
+      set_channel_map(10, address);
+      loki_send_token(10);
+      loki_receive_token(5);
     }
 
     // All tokens have now been received, so notify all cores.
@@ -309,8 +248,8 @@ void loki_sync(const uint cores) {
       int destination;
       for (destination = 1; destination < tiles; destination++) {
         int address = loki_core_address(destination, 0, 5);
-        SET_CHANNEL_MAP(10, address);
-        SEND_TOKEN(10);
+        set_channel_map(10, address);
+        loki_send_token(10);
       }
     }
 
@@ -319,8 +258,8 @@ void loki_sync(const uint cores) {
     if (coresThisTile > 1) {
       int bitmask = all_cores_except_0(coresThisTile);
       int address = loki_mcast_address(tile, bitmask, 6);
-      SET_CHANNEL_MAP(10, address);
-      SEND_TOKEN(10);
+      set_channel_map(10, address);
+      loki_send_token(10);
     }
   }
 }
@@ -338,15 +277,15 @@ void loki_tile_sync(const uint cores) {
   // neighbour. (A tree structure would be more efficient, but there isn't much
   // difference with so few cores.)
   if (core < cores-1)
-    RECEIVE_TOKEN(6);
+    loki_receive_token(6);
 
   // All cores except the first one send a token to their other neighbour
   // (after setting up a connection).
   if (core > 0) {
     int address = loki_core_address(tile, core-1, 6);
-    SET_CHANNEL_MAP(10, address);
-    SEND_TOKEN(10);
-    RECEIVE_TOKEN(6);
+    set_channel_map(10, address);
+    loki_send_token(10);
+    loki_receive_token(6);
   }
 
   // Core 0 notifies all other cores when synchronisation has finished.
@@ -354,15 +293,15 @@ void loki_tile_sync(const uint cores) {
     // All core 0s need to distribute the token throughout their tiles.
     int bitmask = all_cores_except_0(cores);
     int address = loki_mcast_address(tile, bitmask, 6);
-    SET_CHANNEL_MAP(10, address);
-    SEND_TOKEN(10);
+    set_channel_map(10, address);
+    loki_send_token(10);
   }
 }
 
 // Wait until the end_parallel_section function has been called. This must be
 // executed on core 0.
 inline void wait_end_parallel_section() {
-  RECEIVE_TOKEN(7);
+  loki_receive_token(7);
 }
 
 //============================================================================//
@@ -376,19 +315,19 @@ inline void wait_end_parallel_section() {
 void distribute_to_local_tile(const distributed_func* config) {
 
   // Make multicast connections to all other members of the SIMD group.
-  const int tile = get_tile_id();
+  const tile_id_t tile = get_tile_id();
   const int cores = cores_this_tile(config->cores, tile);
 
   if (cores > 1) {
     const unsigned int bitmask = all_cores_except_0(cores);
-    const int ipk_fifos = loki_mcast_address(tile, bitmask, 0);
-    const int data_inputs = loki_mcast_address(tile, bitmask, 7);
+    const channel_t ipk_fifos = loki_mcast_address(tile, bitmask, 0);
+    const channel_t data_inputs = loki_mcast_address(tile, bitmask, 7);
 
-    SET_CHANNEL_MAP(10, ipk_fifos);
-    SET_CHANNEL_MAP(11, data_inputs);
-    SEND(config->data, 11);           // send pointer to function argument(s)
-    SEND(&loki_sleep, 11);            // send function pointers
-    SEND(config->func, 11);
+    set_channel_map(10, ipk_fifos);
+    set_channel_map(11, data_inputs);
+    loki_send(11, (int)config->data);      // send pointer to function argument(s)
+    loki_send(11, (int)&loki_sleep);       // send function pointers
+    loki_send(11, (int)config->func);
 
     // Tell all cores to start executing the loop.
     asm volatile (
@@ -411,16 +350,16 @@ void distribute_to_local_tile(const distributed_func* config) {
 // impossible to share it via memory.
 void receive_config() {
   distributed_func* config = malloc(sizeof(distributed_func));
-  //RECEIVE(config, 7);
+  //config = loki_receive(7);
   void* val;
-  RECEIVE(val, 7);
+  val = (void *)loki_receive(7);
   config->cores = (int)val;
-  RECEIVE(val, 7);
+  val = (void *)loki_receive(7);
   config->func = val;
-  RECEIVE(val, 7);
+  val = (void *)loki_receive(7);
   config->data_size = (size_t)val;
   config->data = malloc((size_t)val);
-  //RECEIVE(val, 7);
+  //val = (void *)loki_receive(7);
   //config->data = val;
 
   RECEIVE_STRUCT(config->data, config->data_size, 7);
@@ -432,13 +371,13 @@ void receive_config() {
 void distribute_to_remote_tile(const int tile, const distributed_func* config) {
 
   // Connect to core 0 in the tile.
-  int inst_fifo = loki_core_address(tile, 0, 0);
-  int data_input = loki_core_address(tile, 0, 7);
-  SET_CHANNEL_MAP(10, inst_fifo);
-  SET_CHANNEL_MAP(11, data_input);
+  channel_t inst_fifo = loki_core_address(tile, 0, 0);
+  channel_t data_input = loki_core_address(tile, 0, 7);
+  set_channel_map(10, inst_fifo);
+  set_channel_map(11, data_input);
 
-  SEND(&loki_sleep, 11);            // send function pointers
-  SEND(&receive_config, 11);
+  loki_send(11, (int)&loki_sleep);            // send function pointers
+  loki_send(11, (int)&receive_config);
 
   // Tell core 0 to receive configuration struct before setting up all other
   // cores on its tile.
@@ -450,11 +389,11 @@ void distribute_to_remote_tile(const int tile, const distributed_func* config) {
     // No clobbers because this is all executed remotely.
   );
 
-  //SEND(malloc(sizeof(distributed_func)), 11);
-  SEND(config->cores, 11);
-  SEND(config->func, 11);
-  SEND(config->data_size, 11);
-  //SEND(malloc(config->data_size), 11);
+  //loki_send(11, malloc(sizeof(distributed_func)));
+  loki_send(11, config->cores);
+  loki_send(11, (int)config->func);
+  loki_send(11, config->data_size);
+  //loki_send(11, malloc(config->data_size));
 
   SEND_STRUCT(config->data, config->data_size, 11);
 
@@ -499,14 +438,14 @@ inline void simd_finished(const loop_config* config, int core) {
   // neighbour. (A tree structure would be more efficient, but there isn't much
   // difference with so few cores.)
   if (core < config->cores - 1)
-    RECEIVE_TOKEN(6);
+    loki_receive_token(6);
 
   // All cores except the first one send a token to their other neighbour
   // (after setting up a connection).
   if (core > 0) {
     int address = loki_core_address(0, core-1, 6);
-    SET_CHANNEL_MAP(2, address);
-    SEND_TOKEN(2);
+    set_channel_map(2, address);
+    loki_send_token(2);
   }
 
 }
@@ -538,12 +477,12 @@ void worker_core(const loop_config* config, int core) {
     int do_iteration;
     iter = core-1;  // Helper core at position 0 doesn't execute iterations.
 
-    RECEIVE(do_iteration, 7);
+    do_iteration = loki_receive(7);
     while (do_iteration) {
       func(iter, core-1);
 
       iter += cores-1;
-      RECEIVE(do_iteration, 7);
+      do_iteration = loki_receive(7);
     }
   }
 
@@ -575,14 +514,14 @@ void helper_core(const loop_config* config) {
   // Connect to all cores.
   int bitmask = all_cores_except_0(cores);
   int address = loki_mcast_address(0, bitmask, 7);
-  SET_CHANNEL_MAP(10, address);
+  set_channel_map(10, address);
 
   if (config->helper_init != NULL)
     config->helper_init();
 
   int iterations;
   for (iterations = 0; iterations+simd_cores < total_iterations; iterations += simd_cores) {
-    SEND(1, 10); // Would prefer to combine this with the branch instruction.
+    loki_send(10, 1); // Would prefer to combine this with the branch instruction.
 
     // Perform any computation shared by all cores and send results.
     func();
@@ -595,18 +534,18 @@ void helper_core(const loop_config* config) {
     if (iterations_remaining > 0) {
       int bitmask1 = all_cores_except_0(iterations_remaining + 1); // +1 accounts for helper core
       int address1 = loki_mcast_address(0, bitmask1, 7);
-      SET_CHANNEL_MAP(10, address1);
+      set_channel_map(10, address1);
 
       // Send 1 to cores in bitmask1
       // Perform computation shared by all cores and send results.
-      SEND(1, 10);
+      loki_send(10, 1);
       func();
     }
   }
 
   // Send 0 to all cores so they know to stop.
-  SET_CHANNEL_MAP(10, address);
-  SEND(0, 10);
+  set_channel_map(10, address);
+  loki_send(10, 0);
 
   // Signal that this core has finished its work. Do we need to tidy() too?
   simd_finished(config, 0);
@@ -641,11 +580,11 @@ void simd_local_tile(const loop_config* config) {
   const int ipk_fifos = loki_mcast_address(tile, bitmask, 0);
   const int data_inputs = loki_mcast_address(tile, bitmask, 7);
 
-  SET_CHANNEL_MAP(10, ipk_fifos);
-  SET_CHANNEL_MAP(11, data_inputs);
-  SEND(config, 11);                 // send pointer to configuration info
-  SEND(&loki_sleep, 11);            // send function pointers
-  SEND(&simd_member, 11);
+  set_channel_map(10, ipk_fifos);
+  set_channel_map(11, data_inputs);
+  loki_send(11, (int)config);            // send pointer to configuration info
+  loki_send(11, (int)&loki_sleep);       // send function pointers
+  loki_send(11, (int)&simd_member);
 
   // Tell all cores to start executing the loop.
   asm volatile (
@@ -666,14 +605,14 @@ void simd_local_tile(const loop_config* config) {
 void simd_remote_tile(const int tile, const loop_config* config) {
 
   // Connect to core 0 in the tile.
-  int inst_fifo = loki_core_address(tile, 0, 0);
-  int data_input = loki_core_address(tile, 0, 7);
-  SET_CHANNEL_MAP(10, inst_fifo);
-  SET_CHANNEL_MAP(11, data_input);
+  channel_t inst_fifo = loki_core_address(tile, 0, 0);
+  channel_t data_input = loki_core_address(tile, 0, 7);
+  set_channel_map(10, inst_fifo);
+  set_channel_map(11, data_input);
 
-  SEND(config, 11);                 // send pointer to configuration info
-  SEND(&loki_sleep, 11);            // send function pointers
-  SEND(&simd_local_tile, 11);
+  loki_send(11, (int)config);                 // send pointer to configuration info
+  loki_send(11, (int)&loki_sleep);            // send function pointers
+  loki_send(11, (int)&simd_local_tile);
 
   // Tell core 0 to set up all other cores on its tile.
   // TODO: will the pointer to data work from the other tile?
@@ -716,7 +655,7 @@ void simd_loop(const loop_config* config) {
 
 // Send a message from a worker to the master, asking for the next iteration.
 inline void request_work() {
-  SEND(get_core_id(), 2);
+  loki_send(2, get_core_id());
 }
 
 // The loop executed by each worker. Executes the provided function for as long
@@ -731,7 +670,7 @@ void worker_thread(const loop_config* config, const int worker) {
   //   2: channel used to communicate with memory
 
   int address = loki_core_address(0, 0, get_core_id() + 2);
-  SET_CHANNEL_MAP(2, address);
+  set_channel_map(2, address);
 
 
   // Loop forever, executing the iterations provided. The master will kill the
@@ -741,7 +680,7 @@ void worker_thread(const loop_config* config, const int worker) {
 
     // Receive the iteration to execute next.
     int iteration;
-    RECEIVE(iteration, 7);
+    iteration = loki_receive(7);
 
     // Execute the loop iteration.
     config->iteration(iteration, worker);
@@ -756,12 +695,12 @@ void worker_farm(const loop_config* config) {
 
   // Make multicast connections to all workers.
   unsigned int bitmask = all_cores_except_0(config->cores);
-  const int ipk_fifos = loki_mcast_address(0, bitmask, 0);
-  const int data_inputs = loki_mcast_address(0, bitmask, 7);
-  SET_CHANNEL_MAP(2, ipk_fifos);
-  SET_CHANNEL_MAP(3, data_inputs);
+  const channel_t ipk_fifos = loki_mcast_address(0, bitmask, 0);
+  const channel_t data_inputs = loki_mcast_address(0, bitmask, 7);
+  set_channel_map(2, ipk_fifos);
+  set_channel_map(3, data_inputs);
 
-  SEND(config, 3);  // send pointer to configuration info
+  loki_send(3, (int)config);  // send pointer to configuration info
 
   asm (
     "rmtexecute -> 2\n"             // begin remote execution
@@ -782,8 +721,8 @@ void worker_farm(const loop_config* config) {
   for (iter = 0; iter < config->iterations; iter++) {
     const int worker = receive_any_input();             // wait for any worker to request work
     const int worker_addr = loki_core_address(0, worker, 7);  // compute network address
-    SET_CHANNEL_MAP(3, worker_addr);                    // connect
-    SEND(iter, 3);                                      // send work
+    set_channel_map(3, worker_addr);                    // connect
+    loki_send(3, iter);                                      // send work
   }
 
   // Wait for all workers to finish their final tasks, and kill them.
@@ -791,7 +730,7 @@ void worker_farm(const loop_config* config) {
   for (finished = 0; finished < config->cores-1; finished++)
     receive_any_input();             // wait for each worker to request work
 
-  KILL(2);                           // kill all workers
+  loki_send_interrupt(2);                           // kill all workers
 
   // Combine each core's partial result before returning.
   config->reduce(config->cores-1);
@@ -821,7 +760,7 @@ void pipeline_stage(const pipeline_config* config, const int stage) {
     next_addr = loki_core_address(0, 0, 6);
 
   // Make connection.
-  SET_CHANNEL_MAP(2, next_addr);
+  set_channel_map(2, next_addr);
 
   // If there is work to do before the pipeline starts, do it now.
   if (config->initialise && config->initialise[stage])
@@ -833,7 +772,7 @@ void pipeline_stage(const pipeline_config* config, const int stage) {
     // If there is a previous core in the pipeline, wait for it to tell us that
     // we can begin work on the next iteration.
     if (have_predecessor)
-      RECEIVE_TOKEN(6);
+      loki_receive_token(6);
 
     // Execute this iteration.
     config->stage_func[stage](i);
@@ -841,16 +780,16 @@ void pipeline_stage(const pipeline_config* config, const int stage) {
     // If there is a subsequent core in the pipeline, tell it that it may now
     // begin work on the next iteration.
     if (have_successor)
-      SEND_TOKEN(2);
+      loki_send_token(2);
   }
 
   // Final core tells core 0 when all work has finished.
   if (!have_successor)
-    SEND_TOKEN(2);
+    loki_send_token(2);
 
   // Core 0 only returns when it receives the signal from the final core.
   if (!have_predecessor)
-    RECEIVE_TOKEN(6);
+    loki_receive_token(6);
 
   // Release any resources when the pipeline has finished.
   // TODO: can cores other than 0 ever reach this code?
@@ -863,12 +802,12 @@ void pipeline_loop(const pipeline_config* config) {
 
   // Tell all cores to start executing the loop.
   const int bitmask = all_cores_except_0(config->cores);
-  const int ipk_fifo = loki_mcast_address(0, bitmask, 0);
-  const int data_input = loki_mcast_address(0, bitmask, 7);
-  SET_CHANNEL_MAP(2, ipk_fifo);
-  SET_CHANNEL_MAP(3, data_input);
+  const channel_t ipk_fifo = loki_mcast_address(0, bitmask, 0);
+  const channel_t data_input = loki_mcast_address(0, bitmask, 7);
+  set_channel_map(2, ipk_fifo);
+  set_channel_map(3, data_input);
 
-  SEND(config, 3);
+  loki_send(3, (int)config);
 
   asm (
     "rmtexecute -> 2\n"             // begin remote execution
@@ -920,7 +859,7 @@ void dd_pipeline_stage(const dd_pipeline_config* config, const int stage) {
     next_addr = loki_core_address(0, 0, 6);
 
   // Make connection.
-  SET_CHANNEL_MAP(2, next_addr);
+  set_channel_map(2, next_addr);
 
   // If there is work to do before the pipeline starts, do it now.
   if (config->initialise && config->initialise[stage])
@@ -942,11 +881,11 @@ void dd_pipeline_stage(const dd_pipeline_config* config, const int stage) {
       // there is only one argument - more can be passed manually, however.)
 //      RECEIVE_ARGUMENT(6);
       int arg;
-      RECEIVE(arg, 6);
+      arg = loki_receive(6);
 
       if (arg == config->end_of_stream_token) {
         if (have_successor)
-          SEND(arg, 2);
+          loki_send(2, arg);
         break;
       }
 
@@ -976,12 +915,12 @@ void dd_pipeline_loop(const dd_pipeline_config* config) {
   if (config->cores > 1) {
     // Tell all cores to start executing the loop.
     const int bitmask = all_cores_except_0(config->cores);
-    const int ipk_fifo = loki_mcast_address(0, bitmask, 0);
-    const int data_input = loki_mcast_address(0, bitmask, 7);
-    SET_CHANNEL_MAP(2, ipk_fifo);
-    SET_CHANNEL_MAP(3, data_input);
+    const channel_t ipk_fifo = loki_mcast_address(0, bitmask, 0);
+    const channel_t data_input = loki_mcast_address(0, bitmask, 7);
+    set_channel_map(2, ipk_fifo);
+    set_channel_map(3, data_input);
 
-    SEND(config, 3);
+    loki_send(3, (int)config);
 
     asm (
       "rmtexecute -> 2\n"             // begin remote execution
@@ -1035,8 +974,8 @@ void start_dataflow(const dataflow_config* config) {
 
   const int bitmask = all_cores_except_0(config->cores);
   const int ipk_fifos = loki_mcast_address(0, bitmask, 0);
-  SET_CHANNEL_MAP(2, ipk_fifos);
-  KILL(2);
+  set_channel_map(2, ipk_fifos);
+  loki_send_interrupt(2);
 
   // The dataflow macro stores the address of any tidy-up code which needs to
   // be executed when dataflow has finished. Tell the core to fetch this now.
@@ -1072,10 +1011,10 @@ void spawn_prep() {
   int return_address;
   int func;
 
-  RECEIVE(return_address, 7);
-  SET_CHANNEL_MAP(2, return_address);
+  return_address = loki_receive(7);
+  set_channel_map(2, return_address);
 
-  RECEIVE(func, 7);
+  func = loki_receive(7);
 
   // Enter an infinite loop, receiving arguments. We will be knocked out of it
   // by the spawner core with a nxipk command, which will take us on to the
@@ -1105,20 +1044,20 @@ void loki_spawn(void* func, const int address, const int argc, ...) {
   // Send all information required to execute the function remotely.
   va_list argp;
   va_start(argp, argc); // argc = last fixed argument
-  SEND(address, 3);
-  SEND(func, 3);
+  loki_send(3, address);
+  loki_send(3, (int)func);
 
   int i;
   for (i=0; i<argc; i++) {
     void* arg = va_arg(argp, void*);
-    SEND(arg, 3);
+    loki_send(3, (int)arg);
   }
 
   // Have now finished going through arguments - get remote core to execute
-  // function. A KILL works for this because the remote core fetched the
+  // function. A loki_send_interrupt works for this because the remote core fetched the
   // function before entering an infinite loop, so ending the loop begins the
   // function.
-  KILL(2);
+  loki_send_interrupt(2);
 
   va_end(argp);
 

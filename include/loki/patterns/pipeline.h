@@ -49,4 +49,6 @@ typedef struct {
 //! Start a data driven pipeline pattern with the given config.
 void dd_pipeline_loop(const dd_pipeline_config* config);
 
+#include <loki/patterns/dataflow.h> // For end_parallel_section.
+
 #endif
