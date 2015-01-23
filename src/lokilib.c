@@ -166,8 +166,8 @@ void loki_init_default(const uint cores, const setup_func setup) {
 // Get a core to execute a function. The remote core must already have all of
 // the necessary function arguments in the appropriate registers.
 void loki_remote_execute(void* func, int core) {
-  const int ipk_fifo = loki_core_address(0, core, 0);
-  const int data_input = loki_core_address(0, core, 7);
+  const channel_t ipk_fifo = loki_core_address(0, core, 0);
+  const channel_t data_input = loki_core_address(0, core, 7);
   set_channel_map(2, ipk_fifo);
   set_channel_map(3, data_input);
 
@@ -1022,33 +1022,33 @@ void send_result() {
 void spawn_prep() {
 
   int return_address;
-  int func;
+  int (*func)(int r13, int r14, int r15, int r16, int r17);
+  int args[5];
 
   return_address = loki_receive(7);
   set_channel_map(2, return_address);
 
-  func = loki_receive(7);
+  func = (void *)loki_receive(7);
 
-  // Enter an infinite loop, receiving arguments. We will be knocked out of it
-  // by the spawner core with a nxipk command, which will take us on to the
-  // function.
-  asm (
-    "fetch %0\n"
-    "lli r10, send_result\n" // when function returns, send result
-    "addui r22, r0, 13\n" // want to put args into r13 onwards
-    "iwtr r22, r7\n"      // receive arg, put in register
-    "addui r22, r22, 1\n" // move to next register
-    "ibjmp.eop -8\n"      // repeat
-    :
-    : "r" (func)
-    : "r10", "r22"
-  );
+  int argc = loki_receive(7);
+  int i;
+  assert(argc <= 5);
+  for (i = 0; i < argc; i++) {
+    args[i] = loki_receive(7);
+  }
+
+  // Calling func like this assumes nothing bad happens if the function doesn't use the later arguments.
+  // This is a reasonable assumption for 5 arguments, but beyond that it's a bit dodgy.
+  loki_send(2, func(args[0], args[1], args[2], args[3], args[4]));
 }
 
 // Execute a function on a remote core, and return its result to a given place.
-void loki_spawn(void* func, const int address, const int argc, ...) {
+void loki_spawn(void* func, const channel_t address, const int argc, ...) {
   // Find a free core and connect to it
   int core = 1;
+
+  // r13-r17
+  assert(argc <= 5);
 
   // Tell the remote core to execute a setup function which will allow it to
   // receive all arguments for the main function.
@@ -1059,18 +1059,13 @@ void loki_spawn(void* func, const int address, const int argc, ...) {
   va_start(argp, argc); // argc = last fixed argument
   loki_send(3, address);
   loki_send(3, (int)func);
+  loki_send(3, argc);
 
   int i;
   for (i=0; i<argc; i++) {
-    void* arg = va_arg(argp, void*);
-    loki_send(3, (int)arg);
+    int arg = va_arg(argp, int);
+    loki_send(3, arg);
   }
-
-  // Have now finished going through arguments - get remote core to execute
-  // function. A loki_send_interrupt works for this because the remote core fetched the
-  // function before entering an infinite loop, so ending the loop begins the
-  // function.
-  loki_send_interrupt(2);
 
   va_end(argp);
 

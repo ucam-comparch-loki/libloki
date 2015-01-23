@@ -36,9 +36,9 @@ void loki_tile_sync(const uint cores);
 //! \brief Execute func on another core, and return the result to a given location.
 //!
 //! Note that due to various limitations of parameter passing, the function is
-//! currently limited to having a maximum of two arguments.
+//! currently limited to having a maximum of five arguments.
 //! For the moment, "another core" is always core 1.
-void loki_spawn(void* func, const int return_address, const int argc, ...);
+void loki_spawn(void* func, const channel_t return_address, const int argc, ...);
 
 //! \brief Get a core to execute the instruction packet at the given address.
 //!
