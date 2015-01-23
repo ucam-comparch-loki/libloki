@@ -83,7 +83,7 @@ typedef int MemConfig;
 //!
 //! \deprecated Use \ref scratchpad_write_bytes instead.
 static inline void scratchpad_block_store_chars(const char* data, size_t len, unsigned int address) {
-  scratchpad_write_bytes(data, len, address * 4);
+  scratchpad_write_bytes(address * 4, data, len);
 }
 //! \brief Store multiple data values in the core's local scratchpad.
 //! \param data pointer to the data
@@ -92,7 +92,7 @@ static inline void scratchpad_block_store_chars(const char* data, size_t len, un
 //!
 //! \deprecated Use \ref scratchpad_write_bytes instead.
 static inline void scratchpad_block_store_shorts(const short* data, size_t len, unsigned int address) {
-  scratchpad_write_bytes(data, len * 2, address * 4);
+  scratchpad_write_bytes(address * 4, data, len * 2);
 }
 //! \brief Store multiple data values in the core's local scratchpad.
 //! \param data pointer to the data
@@ -101,7 +101,7 @@ static inline void scratchpad_block_store_shorts(const short* data, size_t len, 
 //!
 //! \deprecated Use \ref scratchpad_write_words instead.
 static inline void scratchpad_block_store_ints(const int* data, size_t len, unsigned int address) {
-  scratchpad_write_words(data, len, address);
+  scratchpad_write_words(address, data, len);
 }
 
 #endif

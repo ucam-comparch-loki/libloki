@@ -379,11 +379,12 @@ void receive_config() {
   config->func = val;
   val = (void *)loki_receive(7);
   config->data_size = (size_t)val;
-  config->data = malloc((size_t)val);
+  void *data = malloc((size_t)val);
+  config->data = data;
   //val = (void *)loki_receive(7);
   //config->data = val;
 
-  loki_receive_data(config->data, config->data_size, 7);
+  loki_receive_data(data, config->data_size, 7);
 
   distribute_to_local_tile(config);
 }
