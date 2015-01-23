@@ -18,7 +18,7 @@ typedef struct {
   channel_t  inst_mem;      //!< Input. Address/configuration of instruction memory.
   channel_t  data_mem;      //!< Input. Address/configuration of data memory.
   int        mem_config;    //!< Input. Memory configuration (banking, associativity, etc.).
-  setup_func config_func;   //!< Input. Function which performs any program-specific setup.
+  setup_func config_func;   //!< Input. Function which performs any program-specific setup. Run on each core after init.
 } init_config;
 
 //! \brief Prepare cores for execution.

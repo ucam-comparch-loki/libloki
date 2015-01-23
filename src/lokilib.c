@@ -59,6 +59,8 @@ static inline void init_local_tile(const init_config* config) {
   if (config->config_func != NULL) {
     asm volatile (
       "rmtexecute -> 10\n"          // begin remote execution
+      "ifp?lli r10, %lo(loki_sleep)\n"     // set return address - sleep when finished
+      "ifp?lui r10, %hi(loki_sleep)\n"     // set return address - sleep when finished
       "ifp?fetch r7\n"              // fetch function to perform further init
       "fetchr.eop 0f\n0:\n"         // NOP just in case compiler puts an ifp? instruction next.
     );
@@ -72,7 +74,7 @@ static inline void init_local_tile(const init_config* config) {
 // impossible to share it via memory.
 void receive_init_config() {
   init_config* config = malloc(sizeof(init_config));
-  RECEIVE_STRUCT(config, sizeof(init_config), 7);
+  loki_receive_data(config, sizeof(init_config), 7);
 
   init_local_tile(config);
 }
@@ -113,7 +115,7 @@ static inline void init_remote_tile(const uint tile, const init_config* config) 
 
   loki_send(11, (int)&loki_sleep);
   loki_send(11, (int)&receive_init_config);
-  SEND_STRUCT(config, sizeof(init_config), 11);
+  loki_send_data(config, sizeof(init_config), 11);
 
 }
 
@@ -183,13 +185,6 @@ void loki_remote_execute(void* func, int core) {
     "fetchr.eop 0f\n0:\n"           // NOP just in case compiler puts an ifp? instruction next.
     :::
   );
-}
-
-typedef void (*basic_func)(void);
-// Execute a function when its address is held in a variable. Any arguments must
-// already be in the appropriate registers.
-inline void execute(void* func) {
-  ((basic_func)(func))();
 }
 
 // Signal that all required results have been produced by the parallel execution
@@ -362,7 +357,7 @@ void receive_config() {
   //val = (void *)loki_receive(7);
   //config->data = val;
 
-  RECEIVE_STRUCT(config->data, config->data_size, 7);
+  loki_receive_data(config->data, config->data_size, 7);
 
   distribute_to_local_tile(config);
 }
@@ -395,7 +390,7 @@ void distribute_to_remote_tile(const int tile, const distributed_func* config) {
   loki_send(11, config->data_size);
   //loki_send(11, malloc(config->data_size));
 
-  SEND_STRUCT(config->data, config->data_size, 11);
+  loki_send_data(config->data, config->data_size, 11);
 
 }
 
@@ -831,25 +826,6 @@ void pipeline_loop(const pipeline_config* config) {
 
 }
 
-// Receive an argument from a given register-mapped input, and put it in the
-// first argument register.
-#define RECEIVE_ARGUMENT(register) {\
-  asm volatile (\
-    "addu r13, r" #register ", r0\n"\
-    "fetchr.eop 0f\n0:\n"\
-    ::: "r13" /* no inputs, outputs, or clobbered registers */\
-  );\
-}
-
-// Send the contents of the first return value register on a given output channel.
-#define SEND_RESULT(channel_map_entry) {\
-  asm (\
-    "addu r0, r11, r0 -> " #channel_map_entry "\n"\
-    "fetchr.eop 0f\n0:\n"\
-    ::: /* no inputs, outputs, or clobbered registers */\
-  );\
-}
-
 void dd_pipeline_stage(const dd_pipeline_config* config, const int stage) {
 
   const int have_successor = (stage < config->cores - 1);
@@ -893,7 +869,6 @@ void dd_pipeline_stage(const dd_pipeline_config* config, const int stage) {
     while (1) {
       // Receive an argument from the previous core in the pipeline. (Assuming
       // there is only one argument - more can be passed manually, however.)
-//      RECEIVE_ARGUMENT(6);
       int arg;
       arg = loki_receive(6);
 
@@ -1006,17 +981,6 @@ void start_dataflow(const dataflow_config* config) {
 //============================================================================//
 
 #include <stdarg.h>
-
-// Set this function as the return address, and the result of a function will
-// be sent on the network, before sending the core to sleep.
-// Assumes the result fits into a single register, and that channel map table
-// entry 2 has something useful in it.
-void send_result() {
-  asm (
-    "addu.eop r0, r11, r0 -> 2\n"
-    :::
-  );
-}
 
 // Function for the remote core to execute to receive all required arguments.
 void spawn_prep() {
