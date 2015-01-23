@@ -7,23 +7,33 @@
 #include <loki/types.h>
 
 //! A function to operate on arbitrary data.
-typedef void (*general_func)(void* data);
+typedef void (*general_func)(const void* data);
 
 //! Information required to have all cores execute a particular function.
 typedef struct {
   uint         cores;       //!< Number of cores to execute the function.
   general_func func;        //!< Function to be executed.
-  void*        data;        //!< Struct to be passed as the function's argument.
+  const void  *data;        //!< Struct to be passed as the function's argument.
   size_t       data_size;   //!< Size of data in bytes.
 } distributed_func;
 
 //! Have all cores execute the same function simultaneously.
 void loki_execute(const distributed_func* config);
 
+//! \brief Wait for all tiles between 0 and (tiles-1) to reach this point before
+//! continuing.
+//!
+//! This function may only be executed on core 0 of each tile.
+//!
+//! Warning: Overwrites channel map table entry 10 and uses `CH_REGISTER_5` on each core.
+void loki_sync_tiles(const uint cores);
+
 //! \brief Wait for all cores between 0 and (cores-1) to reach this point before
 //! continuing.
 //!
 //! (Warning: quite expensive/slow. Use sparingly.)
+//!
+//! Warning: Overwrites channel map table entry 10 and uses `CH_REGISTER_5` and `CH_REGISTER_6` on each core.
 void loki_sync(const uint cores);
 
 //! \brief Wait for all cores between 0 and (cores-1) on a tile to reach this point before

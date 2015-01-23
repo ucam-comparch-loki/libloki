@@ -8,6 +8,13 @@
 //   Various helper functions used by the parallel implementations.
 //============================================================================//
 
+static void init_run_config(setup_func func, unsigned int cores) {
+  func();
+  // Ensure all cores (across all tiles) are done with the config func before returning.
+  // This ensures no race conditions exist with configuration functions.
+  loki_sync(cores);
+}
+
 // More flexible core initialisation. To be executed by core 0 of any tile.
 static inline void init_local_tile(const init_config* config) {
 
@@ -34,8 +41,6 @@ static inline void init_local_tile(const init_config* config) {
   loki_send(11, data_mem);
   loki_send(11, stack_pointer);
   loki_send(11, stack_size);
-  // Still have to send function pointer, but only have 4 buffer spaces.
-  // Wait until after sending instructions to send more data.
 
   asm volatile (
     "rmtexecute -> 10\n"            // begin remote execution
@@ -50,23 +55,29 @@ static inline void init_local_tile(const init_config* config) {
     "ifp?mullw r14, r7, r11\n"      // multiply core ID by stack size
     "ifp?subu r8, r8, r14\n"
     "ifp?or r9, r8, r0\n"           // frame pointer = stack pointer
-    "ifp?or r10, r7, r0\n"          // set return address
     "fetchr.eop 0f\n0:\n"           // NOP just in case compiler puts an ifp? instruction next.
   );
 
-  loki_send(11, (int)&loki_sleep);
-
   if (config->config_func != NULL) {
+    loki_send(11, (int)&loki_sleep); // return address
+    loki_send(11, (int)config->config_func); // arg1
+    loki_send(11, (int)config->cores); // arg2
+    loki_send(11, (int)&init_run_config); // function
+
     asm volatile (
       "rmtexecute -> 10\n"          // begin remote execution
-      "ifp?lli r10, %lo(loki_sleep)\n"     // set return address - sleep when finished
-      "ifp?lui r10, %hi(loki_sleep)\n"     // set return address - sleep when finished
+      "ifp?or r10, r7, r0\n"        // set return address
+      "ifp?or r13, r7, r0\n"        // set arg1
+      "ifp?or r14, r7, r0\n"        // set arg2
       "ifp?fetch r7\n"              // fetch function to perform further init
       "fetchr.eop 0f\n0:\n"         // NOP just in case compiler puts an ifp? instruction next.
     );
 
-    loki_send(11, (int)config->config_func);
-    config->config_func();
+    // run the same code as other cores.
+    init_run_config(config->config_func, config->cores);
+  } else {
+    // Since there is no config func, all cores are ready at this point. Just need a tile to tile sync.
+    loki_sync_tiles(num_tiles(config->cores));
   }
 }
 
@@ -122,9 +133,13 @@ static inline void init_remote_tile(const uint tile, const init_config* config) 
 inline void loki_init(init_config* config) {
   assert(config->cores > 0);
 
-  if (config->stack_pointer == 0)
-    config->stack_pointer = (char *)malloc(config->stack_size * config->cores)
-                                        + (config->stack_size * config->cores);
+  if (config->stack_pointer == 0) {
+    char *stack_pointer; // Core 0's default stack pointer
+    asm ("addu %0, r8, r0\nfetchr.eop 0f\n0:\n" : "=r"(stack_pointer) : : );
+    stack_pointer += 0x400 - ((int)stack_pointer & 0x3ff); // Guess at the initial sp
+
+    config->stack_pointer = stack_pointer;
+  }
 
   // Give each core connections to memory and a stack.
   if (config->cores > 1) {
@@ -142,19 +157,16 @@ inline void loki_init(init_config* config) {
 // A wrapper for loki_init which fills in most of the values with sensible
 // defaults.
 void loki_init_default(const uint cores, const setup_func setup) {
-  char *stack_pointer; // Core 0's default stack pointer
-  asm ("addu %0, r8, r0\nfetchr.eop 0f\n0:\n" : "=r"(stack_pointer) : : );
-  stack_pointer += 0x400 - ((int)stack_pointer & 0x3ff); // Guess at the initial sp
-
   // Instruction channel
   channel_t addr0 = get_channel_map(0);
 
   // Data channel
   channel_t addr1 = get_channel_map(1);
 
-  init_config* config = malloc(sizeof(init_config));
+  init_config config_data;
+  init_config *config = &config_data;
   config->cores = cores;
-  config->stack_pointer = stack_pointer;
+  config->stack_pointer = 0;
   config->stack_size = 0x12000;
   config->inst_mem = addr0;
   config->data_mem = addr1;
@@ -199,6 +211,40 @@ void end_parallel_section() {
 
 }
 
+// Only continue after all tiles have executed this function. Tokens from each
+// tile are collected, then redistributed to show when all have been received.
+void loki_sync_tiles(const uint tiles) {
+  if (tiles <= 1)
+    return;
+
+  assert(get_core_id() == 0);
+  uint tile = get_tile_id();
+
+  // All tiles except the final one wait until they receive a token from their
+  // neighbour. (A tree structure would be more efficient, but there isn't much
+  // difference with so few tiles.)
+  if (tile < tiles-1)
+    loki_receive_token(5);
+
+  // All tiles except the first one send a token to their other neighbour
+  // (after setting up a connection).
+  if (tile > 0) {
+    int address = loki_core_address(tile-1, 0, 5);
+    set_channel_map(10, address);
+    loki_send_token(10);
+    loki_receive_token(5);
+  } else {
+    // All tokens have now been received, so notify all tiles.
+    assert(tile == 0);
+    int destination;
+    for (destination = 1; destination < tiles; destination++) {
+      int address = loki_core_address(destination, 0, 5);
+      set_channel_map(10, address);
+      loki_send_token(10);
+    }
+  }
+}
+
 // Only continue after all cores have executed this function. Tokens from each
 // core are collected, then redistributed to show when all have been received.
 // TODO: could speedup sync within a tile by using multicast and woche?
@@ -212,7 +258,7 @@ void loki_sync(const uint cores) {
   // All cores except the final one wait until they receive a token from their
   // neighbour. (A tree structure would be more efficient, but there isn't much
   // difference with so few cores.)
-  if ((core < CORES_PER_TILE-1) && (tile*CORES_PER_TILE + core < cores-1))
+  if (core < cores_this_tile(cores, tile)-1)
     loki_receive_token(6);
 
   // All cores except the first one send a token to their other neighbour
@@ -222,31 +268,11 @@ void loki_sync(const uint cores) {
     set_channel_map(10, address);
     loki_send_token(10);
     loki_receive_token(6);
-  }
+  } else {
+    // All core 0s then synchronise between tiles using the same process.
+    assert(core == 0);
 
-  // All core 0s then synchronise between tiles using the same process.
-  if (core == 0) {
-    uint tiles = num_tiles(cores);
-
-    if (tile < tiles-1)
-      loki_receive_token(5);
-
-    if (tile > 0) {
-      int address = loki_core_address(tile-1, 0, 5);
-      set_channel_map(10, address);
-      loki_send_token(10);
-      loki_receive_token(5);
-    }
-
-    // All tokens have now been received, so notify all cores.
-    if (tile == 0 && tiles > 1) {
-      int destination;
-      for (destination = 1; destination < tiles; destination++) {
-        int address = loki_core_address(destination, 0, 5);
-        set_channel_map(10, address);
-        loki_send_token(10);
-      }
-    }
+    loki_sync_tiles(num_tiles(cores));
 
     // All core 0s need to distribute the token throughout their tiles.
     uint coresThisTile = cores_this_tile(cores, tile);
