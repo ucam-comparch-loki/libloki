@@ -13,13 +13,23 @@
 //! Get an entry from the channel map table.
 static inline channel_t get_channel_map(int id) {
   channel_t result;
-  asm ("getchmap %0, %1\nfetchr.eop 0f\n0:\n" : "=r"(result) : "r"(id));
+  asm (
+    "fetchr 0f\n"
+    "getchmap.eop %0, %1\n0:\n"
+    : "=r"(result)
+    : "r"(id)
+  );
   return result;
 }
 
 //! Set an entry in the channel map table.
 static inline void set_channel_map(int id, channel_t value) {
-  asm ("setchmap %0, %1\nfetchr.eop 0f\n0:\n" : : "r"(value), "r"(id));
+  asm (
+    "fetchr 0f\n"
+    "setchmap.eop %0, %1\n0:\n"
+    :
+    : "r"(value), "r"(id)
+  );
 }
 
 //! Connect this core's output to the specified other core.

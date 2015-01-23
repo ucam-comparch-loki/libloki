@@ -16,8 +16,8 @@
 //! Use \ref loki_send instead where possible.
 #define SEND(variable, output) {\
   asm (\
-    "addu r0, %0, r0 -> " #output "\n"\
-    "fetchr.eop 0f\n0:\n"\
+    "fetchr 0f\n"\
+    "addu.eop r0, %0, r0 -> " #output "\n0:\n"\
     :\
     : "r" ((int)variable)\
     :\
@@ -53,8 +53,8 @@ static inline void loki_send(const int channel, int value) {
 //! Use \ref loki_receive instead where possible.
 #define RECEIVE(variable, input) {\
   asm volatile (\
-    "addu %0, r" #input ", r0\n"\
-    "fetchr.eop 0f\n0:\n"\
+    "fetchr 0f\n"\
+    "addu.eop %0, r" #input ", r0\n0:\n"\
     : "=r" (variable)\
     :\
     :\
@@ -202,8 +202,8 @@ static inline void loki_receive_data(void *data, size_t size, enum Channels inpu
 //! Use \ref loki_send_interrupt instead where possible.
 #define RMTNXIPK(output) {\
   asm (\
-    "rmtnxipk -> " #output "\n"\
-    "fetchr.eop 0f\n0:\n"\
+    "fetchr 0f\n"\
+    "rmtnxipk.eop -> " #output "\n0:\n"\
     :::\
   );\
 }
@@ -250,9 +250,9 @@ static inline int receive_any_input() {
   // r18 must be used for irdr in verilog implementation.
   int data;
   asm volatile (
+    "fetchr 0f\n"
     "selch r18, 0xFFFFFFFF\n"   // get the channel on which data first arrives
-    "irdr %0, r18\n"            // get the data from the channel
-    "fetchr.eop 0f\n0:\n"
+    "irdr.eop %0, r18\n0:\n"    // get the data from the channel
     : "=r" (data)
     :
     : "r18"

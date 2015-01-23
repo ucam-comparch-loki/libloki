@@ -70,8 +70,8 @@ typedef int MemConfig;
 //! \deprecated Use \ref loki_receive_token instead.
 #define RECEIVE_TOKEN(register) {\
   asm volatile (\
-    "addu r0, r" #register ", r0\n"\
-    "fetchr.eop 0f\n0:\n"\
+    "fetchr 0f\n"\
+    "addu.eop r0, r" #register ", r0\n0:\n"\
     ::: /* no inputs, outputs, or clobbered registers */\
   );\
 }

@@ -15,8 +15,8 @@ static inline int scratchpad_read(unsigned int address) {
   assert(address < SCRATCHPAD_NUM_WORDS);
   int result;
   asm volatile (
-    "scratchrd %0, %1\n"
-    "fetchr.eop 0f\n0:\n"
+    "fetchr 0f\n"
+    "scratchrd.eop %0, %1\n0:\n"
     : "=r" (result)
     : "r" (address)
     :
@@ -28,8 +28,8 @@ static inline int scratchpad_read(unsigned int address) {
 static inline void scratchpad_write(unsigned int address, int value) {
   assert(address < SCRATCHPAD_NUM_WORDS);
   asm volatile (
-    "scratchwr %1, %0\n"
-    "fetchr.eop 0f\n0:\n"
+    "fetchr 0f\n"
+    "scratchwr.eop %1, %0\n0:\n"
     :
     : "r" (address), "r" (value)
     :

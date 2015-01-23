@@ -26,9 +26,9 @@ static inline void stop_instruction_trace()  {SYS_CALL(0x25);}
 static inline uint current_cycle() {
   uint val;
   asm (
+    "fetchr 0f\n"
     "syscall 0x30\n"
-    "or %0, r12, r0\n" // Assuming less than 2^32 cycles, otherwise need r11 too
-    "fetchr.eop 0f\n0:\n"
+    "or.eop %0, r12, r0\n0:\n" // Assuming less than 2^32 cycles, otherwise need r11 too
     : "=r" (val)
     :
     : "r11", "r12"
