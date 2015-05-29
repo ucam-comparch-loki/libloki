@@ -4,8 +4,13 @@
 #ifndef LOKI_TYPES_H_
 #define LOKI_TYPES_H_
 
-//! Unsinged integer.
+//! Unsigned integer.
 typedef unsigned int uint;
+
+//! Boolean value.
+typedef unsigned int bool;
+#define false 0
+#define true 1
 
 //! \brief Hack to allow commas to be passed as part of a macro argument, instead of
 //! looking like the end of an argument.
@@ -20,7 +25,7 @@ typedef unsigned int uint;
 typedef unsigned int tile_id_t;
 
 //! Components of a tile.
-enum Components {
+enum Cores {
   COMPONENT_CORE_0, //!< Core 0.
   COMPONENT_CORE_1, //!< Core 1.
   COMPONENT_CORE_2, //!< Core 2.
@@ -28,7 +33,10 @@ enum Components {
   COMPONENT_CORE_4, //!< Core 4.
   COMPONENT_CORE_5, //!< Core 5.
   COMPONENT_CORE_6, //!< Core 6.
-  COMPONENT_CORE_7, //!< Core 7.
+  COMPONENT_CORE_7  //!< Core 7.
+};
+
+enum Memories {
   COMPONENT_BANK_0, //!< Cache Bank 0.
   COMPONENT_BANK_1, //!< Cache Bank 1.
   COMPONENT_BANK_2, //!< Cache Bank 2.

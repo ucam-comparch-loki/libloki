@@ -11,26 +11,39 @@
 typedef unsigned long channel_t;
 
 //! Forms a channel address to talk to a particular tile component and channel.
-static inline channel_t loki_core_address(const tile_id_t tile, const enum Components component,
-                                          const enum Channels channel) {
-  return ((channel_t)tile << 20) | ((channel_t)component << 12) | ((channel_t)channel << 8);
+//! Specifying 0 credits leaves the credit counter the same as the previous connection.
+static inline channel_t loki_core_address(const tile_id_t       tile,
+                                          const enum Cores      core,
+                                          const enum Channels   channel,
+                                          const unsigned int    credits) {
+  channel_t address = ((channel_t)tile << 8) | ((channel_t)core << 5) 
+                    | ((channel_t)channel << 2) | 1;
+  
+  if (credits > 0)
+    address = address | ((channel_t)credits << 14) | (1 << 20);
+  
+  return address;
 }
 //! Forms a multicast channel address to talk to a number of components on a tile.
-static inline channel_t loki_mcast_address(const tile_id_t tile, const enum MulticastDestinations bitmask,
-                                           const enum Channels channel) {
-  return (1 << 28) | loki_core_address(tile, (enum Components)bitmask, channel);
+//! Pipeline stall mode specifies that data being sent on this channel cannot
+//! proceed to the WRITE stage until the NET stage is empty.
+static inline channel_t loki_mcast_address(const enum MulticastDestinations bitmask,
+                                           const enum Channels              channel,
+                                           const bool                       pipelineStallMode) {
+  return (pipelineStallMode << 13) | (bitmask << 5) | (channel << 2);
 }
 //! Forms a memory channel to allow memory accesses.
-static inline channel_t loki_mem_address(const enum Channels returnChannel, const tile_id_t tile,
-                                         const enum Components component, const enum Channels channel,
-                                         const enum MemConfigGroupSize log2GroupSize, const enum MemConfigLineSize log2LineSize) {
-  return ((channel_t)returnChannel << 29) | loki_core_address(tile, component, channel)
-       | ((channel_t)log2GroupSize << 4) | (channel_t)log2LineSize;
-}
-//! Generate a memory configuration command. Send to a memory group as-is.
-static inline int loki_mem_config(const enum MemConfigAssociativity log2Assoc, const enum MemConfigLineSize log2LineSize,
-                                  const enum MemConfigType isCache, const enum MemConfigGroupSize log2GroupSize) {
-  return (log2Assoc << 20) | (log2LineSize << 16) | (isCache << 8) | (log2GroupSize);
+static inline channel_t loki_mem_address(const enum Memories           bank,
+                                         const enum Channels           channel,
+                                         const enum Channels           returnChannel,
+                                         const enum MemConfigGroupSize groupSize,
+                                         const bool                    skipL1,
+                                         const bool                    skipL2,
+                                         const bool                    checkTagsL1,
+                                         const bool                    checkTagsL2) {
+                                         
+  return (checkTagsL2 << 16) | (checkTagsL1 << 15) | (skipL2 << 14) | (skipL1 << 13)
+       | (groupSize << 11) | (returnChannel << 8) | (bank << 5) | (channel << 2) | 2;
 }
 
 //! Generate a bitmask with the lowest num_cores bits set to 1. This can then be
@@ -43,6 +56,11 @@ static inline enum MulticastDestinations all_cores(uint num_cores) {
 //! need to send data to itself. num_cores is inclusive of 0.
 static inline enum MulticastDestinations all_cores_except_0(uint num_cores) {
   return all_cores(num_cores) & ~MULTICAST_CORE_0;
+}
+
+//! Set up a bitmask for a single core on the local tile.
+static inline enum MulticastDestinations single_core_bitmask(enum Cores core) {
+  return (enum MulticastDestinations)(1 << core);
 }
 
 //! Return the minimum number of tiles required to hold the given number of cores.
@@ -64,7 +82,7 @@ static inline int get_unique_core_id(void) {
 }
 
 //! Return the core's position within its tile.
-static inline enum Components get_core_id() {
+static inline enum Cores get_core_id() {
   return get_control_register(CR_CPU_LOCATION) & 0x7;
 }
 

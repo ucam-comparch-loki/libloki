@@ -32,11 +32,6 @@ static inline void set_channel_map(int id, channel_t value) {
   );
 }
 
-//! Connect this core's output to the specified other core.
-static inline void loki_connect(int id, tile_id_t tile, enum Components component, enum Channels channel) {
-  set_channel_map(id, loki_core_address(tile, component, channel));
-}
-
 //! \brief Get a core in a group to connect to another HELIX-style (wrapping around
 //! within the group).
 //!
@@ -52,7 +47,9 @@ static inline void loki_connect_helix(int output, int offset, enum Channels chan
     next_core -= group_size;
   if (next_core < 0)
     next_core += group_size;
-  loki_connect(output, get_tile_id(), next_core, channel);
+  
+  channel_t address = loki_mcast_address(single_core_bitmask(next_core), channel, false);
+  set_channel_map(output, address);
 }
 
 #endif
