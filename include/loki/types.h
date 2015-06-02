@@ -21,6 +21,12 @@ typedef unsigned int bool;
 //! Number of cores in each tile.
 #define CORES_PER_TILE 8
 
+//! Number of rows of compute tiles on the chip (excluding I/O halo).
+#define COMPUTE_TILE_ROWS 4
+
+//! Number of columns of compute tiles on the chip (excluding I/O halo).
+#define COMPUTE_TILE_COLUMNS 4
+
 //! Tile ID - a tile on the processor.
 typedef unsigned int tile_id_t;
 

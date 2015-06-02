@@ -66,10 +66,10 @@ static inline void init_local_tile(const init_config* config) {
     return;
   }
 
-  int inst_mem = config->inst_mem | (tile << 20);
-  int data_mem = config->data_mem | (tile << 20);
+  int inst_mem = config->inst_mem;
+  int data_mem = config->data_mem;
   uint stack_size = config->stack_size;
-  uint stack_pointer = (uint)config->stack_pointer - tile*CORES_PER_TILE*stack_size;
+  uint stack_pointer = (uint)config->stack_pointer - tile2int(tile)*CORES_PER_TILE*stack_size;
   channel_t inst_mcast = loki_mcast_address(all_cores_except_0(cores), 0, false);
   channel_t data_mcast = loki_mcast_address(all_cores_except_0(cores), 7, false);
 
@@ -86,7 +86,7 @@ static inline void init_local_tile(const init_config* config) {
     "rmtexecute -> 10\n"        // begin remote execution
     "cregrdi r11, 1\n"          // get core id, and put into r11
     "andi r11, r11, 0x7\n"      // get core id, and put into r11
-    "slli r23, r11, 8\n"        // the memory port to connect to
+    "slli r23, r11, 2\n"        // the memory port to connect to
     "addu r17, r7, r23\n"       // combine port with received inst_mem
     "addu r18, r7, r23\n"       // combine port with received data_mem
     "setchmapi 0, r17\n"
@@ -131,7 +131,7 @@ void receive_init_config() {
   init_local_tile(config);
 }
 
-static inline void init_remote_tile(const uint tile, const init_config* config) {
+static inline void init_remote_tile(const tile_id_t tile, const init_config* config) {
 
   // Connect to core 0 in the tile.
   int inst_fifo = loki_core_address(tile, 0, 0, DEFAULT_CREDIT_COUNT);
@@ -174,6 +174,9 @@ static inline void init_remote_tile(const uint tile, const init_config* config) 
 
 inline void loki_init(init_config* config) {
   assert(config->cores > 0);
+  
+  if (environment == ENV_NONE)
+    detect_environment();
 
   if (config->stack_pointer == 0) {
     char *stack_pointer; // Core 0's default stack pointer
@@ -183,11 +186,21 @@ inline void loki_init(init_config* config) {
     config->stack_pointer = stack_pointer;
   }
 
+  // Instruction channel
+  if (config->inst_mem == 0)
+    config->inst_mem = get_channel_map(0);
+  // Data channel
+  if (config->data_mem == 0)
+    config->data_mem = get_channel_map(1);
+  // Memory config
+  if (config->mem_config == 0 && environment == ENV_LOKISIM)
+    config->mem_config = loki_mem_configuration(ASSOCIATIVITY_1, LINESIZE_32, CACHE, GROUPSIZE_8);
+
   // Give each core connections to memory and a stack.
   if (config->cores > 1) {
-    tile_id_t tile;
+    unsigned int tile;
     for (tile = 1; tile*CORES_PER_TILE < config->cores; tile++) {
-      init_remote_tile(tile, config);
+      init_remote_tile(int2tile(tile), config);
     }
 
     init_local_tile(config);
@@ -199,20 +212,15 @@ inline void loki_init(init_config* config) {
 // A wrapper for loki_init which fills in most of the values with sensible
 // defaults.
 void loki_init_default(const uint cores, const setup_func setup) {
-  // Instruction channel
-  channel_t addr0 = get_channel_map(0);
-
-  // Data channel
-  channel_t addr1 = get_channel_map(1);
 
   init_config config_data;
   init_config *config = &config_data;
   config->cores = cores;
   config->stack_pointer = 0;
   config->stack_size = 0x12000;
-  config->inst_mem = addr0;
-  config->data_mem = addr1;
-  config->mem_config = loki_mem_configuration(ASSOCIATIVITY_1, LINESIZE_32, CACHE, GROUPSIZE_8);
+  config->inst_mem = 0;
+  config->data_mem = 0;
+  config->mem_config = 0;
   config->config_func = setup;
 
   loki_init(config);
@@ -222,8 +230,8 @@ void loki_init_default(const uint cores, const setup_func setup) {
 // Get a core to execute a function. The remote core must already have all of
 // the necessary function arguments in the appropriate registers.
 void loki_remote_execute(void* func, int core) {
-  const channel_t ipk_fifo = loki_core_address(0, core, 0, DEFAULT_CREDIT_COUNT);
-  const channel_t data_input = loki_core_address(0, core, 7, DEFAULT_CREDIT_COUNT);
+  const channel_t ipk_fifo = loki_mcast_address(single_core_bitmask(core), 0, false);
+  const channel_t data_input = loki_mcast_address(single_core_bitmask(core), 7, false);
   set_channel_map(2, ipk_fifo);
   set_channel_map(3, data_input);
 
@@ -248,7 +256,7 @@ void end_parallel_section() {
 
   // Current implementation is to send a token to core 0, input 7.
   // wait_end_parallel_section() must therefore execute on core 0.
-  int address = loki_core_address(0, 0, 7, DEFAULT_CREDIT_COUNT);
+  int address = loki_mcast_address(single_core_bitmask(0), 7, false);
   set_channel_map(2, address);
   loki_send_token(2);
 
@@ -261,7 +269,7 @@ void loki_sync_tiles(const uint tiles) {
     return;
 
   assert(get_core_id() == 0);
-  uint tile = get_tile_id();
+  uint tile = tile2int(get_tile_id());
 
   // All tiles except the final one wait until they receive a token from their
   // neighbour. (A tree structure would be more efficient, but there isn't much
@@ -272,7 +280,7 @@ void loki_sync_tiles(const uint tiles) {
   // All tiles except the first one send a token to their other neighbour
   // (after setting up a connection).
   if (tile > 0) {
-    int address = loki_core_address(tile-1, 0, 5, DEFAULT_CREDIT_COUNT);
+    int address = loki_core_address(int2tile(tile-1), 0, 5, DEFAULT_CREDIT_COUNT);
     set_channel_map(10, address);
     loki_send_token(10);
     loki_receive_token(5);
@@ -281,7 +289,7 @@ void loki_sync_tiles(const uint tiles) {
     assert(tile == 0);
     int destination;
     for (destination = 1; destination < tiles; destination++) {
-      int address = loki_core_address(destination, 0, 5, DEFAULT_CREDIT_COUNT);
+      int address = loki_core_address(int2tile(destination), 0, 5, DEFAULT_CREDIT_COUNT);
       set_channel_map(10, address);
       loki_send_token(10);
     }
@@ -296,7 +304,7 @@ void loki_sync(const uint cores) {
     return;
 
   uint core = get_core_id();
-  uint tile = get_tile_id();
+  tile_id_t tile = get_tile_id();
 
   // All cores except the final one wait until they receive a token from their
   // neighbour. (A tree structure would be more efficient, but there isn't much
@@ -307,7 +315,7 @@ void loki_sync(const uint cores) {
   // All cores except the first one send a token to their other neighbour
   // (after setting up a connection).
   if (core > 0) {
-    int address = loki_core_address(tile, core-1, 6, DEFAULT_CREDIT_COUNT);
+    int address = loki_mcast_address(single_core_bitmask(core-1), 6, false);
     set_channel_map(10, address);
     loki_send_token(10);
     loki_receive_token(6);
@@ -335,7 +343,6 @@ void loki_tile_sync(const uint cores) {
     return;
 
   uint core = get_core_id();
-  uint tile = get_tile_id();
 
   // All cores except the final one wait until they receive a token from their
   // neighbour. (A tree structure would be more efficient, but there isn't much
@@ -346,7 +353,7 @@ void loki_tile_sync(const uint cores) {
   // All cores except the first one send a token to their other neighbour
   // (after setting up a connection).
   if (core > 0) {
-    int address = loki_core_address(tile, core-1, 6, DEFAULT_CREDIT_COUNT);
+    int address = loki_mcast_address(single_core_bitmask(core-1), 6, false);
     set_channel_map(10, address);
     loki_send_token(10);
     loki_receive_token(6);
@@ -434,7 +441,7 @@ void receive_config() {
 }
 
 // Start cores on another tile.
-void distribute_to_remote_tile(const int tile, const distributed_func* config) {
+void distribute_to_remote_tile(tile_id_t tile, const distributed_func* config) {
 
   // Connect to core 0 in the tile.
   channel_t inst_fifo = loki_core_address(tile, 0, 0, DEFAULT_CREDIT_COUNT);
@@ -472,7 +479,7 @@ void loki_execute(const distributed_func* config) {
   if (config->cores > 1) {
     int tile;
     for (tile = 1; tile*CORES_PER_TILE < config->cores; tile++) {
-      distribute_to_remote_tile(tile, config);
+      distribute_to_remote_tile(int2tile(tile), config);
     }
 
     distribute_to_local_tile(config);
@@ -510,7 +517,7 @@ inline void simd_finished(const loop_config* config, int core) {
   // All cores except the first one send a token to their other neighbour
   // (after setting up a connection).
   if (core > 0) {
-    int address = loki_core_address(0, core-1, 6, DEFAULT_CREDIT_COUNT);
+    int address = loki_mcast_address(single_core_bitmask(core-1), 6, false);
     set_channel_map(2, address);
     loki_send_token(2);
   }
@@ -619,7 +626,7 @@ void helper_core(const loop_config* config) {
 }
 
 void simd_member(const loop_config* config, const int core) {
-  const tile_id_t tile = get_tile_id();
+  const int tile = tile2int(get_tile_id());
 
   if (core == 0) {
     // Determine which role this core is going to play.
@@ -670,7 +677,7 @@ void simd_local_tile(const loop_config* config) {
 }
 
 // Set up a SIMD group on another tile.
-void simd_remote_tile(const int tile, const loop_config* config) {
+void simd_remote_tile(const tile_id_t tile, const loop_config* config) {
 
   // Connect to core 0 in the tile.
   channel_t inst_fifo = loki_core_address(tile, 0, 0, DEFAULT_CREDIT_COUNT);
@@ -702,7 +709,7 @@ void simd_loop(const loop_config* config) {
   if (config->cores > 1) {
     int tile;
     for (tile = 1; tile < num_tiles(config->cores); tile++) {
-      simd_remote_tile(tile, config);
+      simd_remote_tile(int2tile(tile), config);
     }
 
     simd_local_tile(config);
@@ -988,7 +995,7 @@ void dd_pipeline_loop(const dd_pipeline_config* config) {
     loki_send(3, (int)config);
 
     asm (
-      "fetchr.eop 0f\n"
+      "fetchr 0f\n"
       "rmtexecute -> 2\n"           // begin remote execution
       "addu r13, r7, r0\n"          // receive pointer to configuration info
       "cregrdi r11, 1\n"            // get core id, and put into r14
@@ -997,7 +1004,7 @@ void dd_pipeline_loop(const dd_pipeline_config* config) {
       "lui r10, %hi(loki_sleep)\n"  // set return address - sleep when finished
       "lli r24, %lo(dd_pipeline_stage)\n"
       "lui r24, %hi(dd_pipeline_stage)\n"
-      "fetch r24\n"                 // fetch the pipeline stage's task
+      "fetch.eop r24\n"             // fetch the pipeline stage's task
       "0:\n"
     );
   }

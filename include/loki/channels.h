@@ -10,6 +10,23 @@
 //! Communications channel address type.
 typedef unsigned long channel_t;
 
+//! Encode a tile's position from its coordinates.
+static inline tile_id_t tile_id(const unsigned int x, const unsigned int y) {
+  return (x << 3) | (y << 0);
+}
+
+//! Convert a tile_id_t into a global tile number (useful for iterating).
+static inline unsigned int tile2int(const tile_id_t tile) {
+  unsigned int x = (tile >> 3) - 1;
+  unsigned int y = (tile & 7) - 1;
+  return (y * COMPUTE_TILE_COLUMNS) + x;
+}
+
+//! Convert a global tile number into the tile_id_t type.
+static inline tile_id_t int2tile(const unsigned int val) {
+  return tile_id((val % COMPUTE_TILE_COLUMNS) + 1, (val / COMPUTE_TILE_COLUMNS) + 1);
+}
+
 //! Forms a channel address to talk to a particular tile component and channel.
 //! Specifying 0 credits leaves the credit counter the same as the previous connection.
 static inline channel_t loki_core_address(const tile_id_t       tile,
@@ -71,9 +88,9 @@ static inline unsigned int num_tiles(const unsigned int cores) {
 //! Calculate the number of cores that are active on a given tile, given a total
 //! number of active cores.
 static inline unsigned int cores_this_tile(const unsigned int cores, const tile_id_t tile) {
-  return (cores - tile * CORES_PER_TILE > CORES_PER_TILE)
+  return (cores - tile2int(tile) * CORES_PER_TILE > CORES_PER_TILE)
        ? CORES_PER_TILE
-       : cores - tile * CORES_PER_TILE;
+       : cores - tile2int(tile) * CORES_PER_TILE;
 }
 
 //! Return a globally unique idenitifer for this core.

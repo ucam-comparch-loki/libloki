@@ -81,22 +81,23 @@ static inline int loki_receive(const enum Channels channel) {
 //! \param output must be an integer literal.
 //!
 //! Use \ref loki_send_data instead where possible.
-// TODO: I can't get this to work properly without hard-coded registers.
 #define SEND_STRUCT(struct_ptr, bytes, output) {\
+  int end_of_struct;\
+  void* struct_ptr_copy;\
   asm volatile (\
     "fetchpstr 0f\n"\
-    "addui r12, %0, 4\n"\
-    "addu.eop r11, %0, %1\n"\
+    "addui %1, %2, 4\n"\
+    "addu.eop %0, %2, %3\n"\
     "0:\n"\
-    "ldw -4(r12) -> 1\n"\
-    "setlt.p r0, r12, r11\n"\
+    "ldw -4(%1) -> 1\n"\
+    "setlt.p r0, %1, %0\n"\
     "or r0, r2, r0 -> " #output "\n"\
     "if!p?fetchr 0f\n"\
-    "addui.eop r12, r12, 4\n"\
+    "addui.eop %1, %1, 4\n"\
     "0:\n"\
-    : \
+    : "+&r" (end_of_struct), "+&r" (struct_ptr_copy)\
     : "r" (struct_ptr), "r" (bytes)\
-    : "r11", "r12"\
+    : \
   );\
 }
 
@@ -134,7 +135,7 @@ static inline void loki_send_data(const void *data, size_t size, int output) {
     int buffer[(size + 3) / 4];
     buffer[(size - 1) / 4] = 0;
     memcpy(buffer, data, size);
-    loki_send_words(buffer, size, output);
+    loki_send_words(buffer, (size + 3) / 4, output);
   } else {
     loki_send_words((const int *)data, size / 4, output);
   }
@@ -151,15 +152,15 @@ static inline void loki_send_data(const void *data, size_t size, int output) {
   void* struct_ptr_copy;\
   asm volatile (\
     "fetchpstr 0f\n"\
-    "addu %0, %2, %3\n"\
-    "addui.eop %1, %2, 4\n"\
+    "addui %1, %2, 4\n"\
+    "addu.eop %0, %2, %3\n"\
     "0:\n"\
     "stw r" #input ", -4(%1) -> 1\n"\
     "setlt.p r0, %1, %0\n"\
     "if!p?fetchr 0f\n"\
     "addui.eop %1, %1, 4\n"\
     "0:\n"\
-    : "=r" (end_of_struct), "=r" (struct_ptr_copy)\
+    : "+&r" (end_of_struct), "+&r" (struct_ptr_copy)\
     : "r" (struct_ptr), "r" (bytes)\
     :\
   );\
@@ -189,7 +190,7 @@ static inline void loki_receive_data(void *data, size_t size, enum Channels inpu
   // Reads must be aligned - unaligned data must be copied.
   if (((int)data & 3) || (size & 3)) {
     int buffer[(size + 3) / 4];
-    loki_receive_words(buffer, size, input);
+    loki_receive_words(buffer, (size + 3) / 4, input);
     memcpy(data, buffer, size);
   } else {
     loki_receive_words((int *)data, size / 4, input);
