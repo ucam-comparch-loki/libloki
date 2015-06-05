@@ -261,4 +261,36 @@ static inline int receive_any_input() {
 
   return data;
 }
+
+//! \brief Store 1 in variable if there is any data in the given input buffer.
+//! Store 0 otherwise. Note that buffer 0 corresponds to register 2.
+//! \param variable must be an lvalue.
+//! \param input must be an integer literal.
+//!
+//! Use \ref loki_test_channel instead where possible.
+#define TEST_CHANNEL(variable, input) {\
+  asm volatile (\
+    "fetchr 0f\n"\
+    "tstchi.eop %0, " #input "\n0:\n"\
+    : "=r" (variable)\
+    :\
+    :\
+  );\
+}
+
+//! \brief Return 1 if there is any data in the input buffer for the specified
+//! channel, or 0 otherwise.
+static inline int loki_test_channel(enum Channels channel) {
+  int result;
+  switch (channel) {
+  case 2: TEST_CHANNEL(result, 0); return result;
+  case 3: TEST_CHANNEL(result, 1); return result;
+  case 4: TEST_CHANNEL(result, 2); return result;
+  case 5: TEST_CHANNEL(result, 3); return result;
+  case 6: TEST_CHANNEL(result, 4); return result;
+  case 7: TEST_CHANNEL(result, 5); return result;
+  default: assert(0); return -1;
+  }
+}
+
 #endif
