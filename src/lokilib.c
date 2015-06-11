@@ -213,8 +213,7 @@ inline void loki_init(init_config* config) {
 // defaults.
 void loki_init_default(const uint cores, const setup_func setup) {
 
-  init_config config_data;
-  init_config *config = malloc(sizeof(config_data));//&config_data;
+  init_config *config = malloc(sizeof(init_config));
   config->cores = cores;
   config->stack_pointer = 0;
   config->stack_size = 0x12000;
