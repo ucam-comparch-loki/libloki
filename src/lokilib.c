@@ -144,20 +144,15 @@ static inline void init_remote_tile(const tile_id_t tile, const init_config* con
   loki_send(11, config->data_mem);
   loki_send(11, config->mem_config);
 
-  loki_send(11, (int)config->stack_pointer - tile*CORES_PER_TILE*config->stack_size);
+  loki_send(11, (int)config->stack_pointer - tile2int(tile)*CORES_PER_TILE*config->stack_size);
   // Still have to send function pointers, but only have 4 buffer spaces.
   // Wait until after sending instructions to send more data.
 
   asm (
     "fetchr 0f\n"
     "rmtexecute -> 10\n"        // begin remote execution
-    "cregrdi r11, 1\n"          // get tile id, and put into r11
-    "srli r11, r11, 4\n"        // get tile id, and put into r11
-    "slli r23, r11, 20\n"       // the memory port to connect to
-    "addu r17, r7, r23\n"       // combine port with received inst_mem
-    "addu r18, r7, r23\n"       // combine port with received data_mem
-    "setchmapi 0, r17\n"
-    "setchmapi 1, r18\n"
+    "setchmapi 0, r7\n"         // instruction channel
+    "setchmapi 1, r7\n"         // data channel
     "sendconfig r7, 61 -> 0\n"  // send memory configuration command
     "or r8, r7, r0\n"           // receive stack pointer
     "or r9, r8, r0\n"           // frame pointer = stack pointer
@@ -193,7 +188,7 @@ inline void loki_init(init_config* config) {
   if (config->data_mem == 0)
     config->data_mem = get_channel_map(1);
   // Memory config
-  if (config->mem_config == 0 && environment == ENV_LOKISIM)
+  if (config->mem_config == 0)
     config->mem_config = loki_mem_configuration(ASSOCIATIVITY_1, LINESIZE_32, CACHE, GROUPSIZE_8);
 
   // Give each core connections to memory and a stack.
