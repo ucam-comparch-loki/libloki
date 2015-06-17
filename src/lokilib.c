@@ -125,7 +125,7 @@ static inline void init_local_tile(const init_config* config) {
 // Make a copy of the configuration struct in this tile, as it is awkward/
 // impossible to share it via memory.
 void receive_init_config() {
-  init_config* config = malloc(sizeof(init_config));
+  init_config* config = (init_config*)loki_receive(7);
   loki_receive_data(config, sizeof(init_config), 7);
 
   init_local_tile(config);
@@ -163,6 +163,10 @@ static inline void init_remote_tile(const tile_id_t tile, const init_config* con
 
   loki_send(11, (int)&loki_sleep);
   loki_send(11, (int)&receive_init_config);
+  
+  init_config* remotePointer = malloc(sizeof(init_config));
+  assert(remotePointer != NULL);
+  loki_send(11, (int)remotePointer);
   loki_send_data(config, sizeof(init_config), 11);
 
 }
@@ -301,11 +305,12 @@ void loki_sync(const uint cores) {
 
   uint core = get_core_id();
   tile_id_t tile = get_tile_id();
+  uint coresThisTile = cores_this_tile(cores, tile);
 
   // All cores except the final one wait until they receive a token from their
   // neighbour. (A tree structure would be more efficient, but there isn't much
   // difference with so few cores.)
-  if (core < cores_this_tile(cores, tile)-1)
+  if (core < coresThisTile-1)
     loki_receive_token(6);
 
   // All cores except the first one send a token to their other neighbour
@@ -314,6 +319,8 @@ void loki_sync(const uint cores) {
     int address = loki_mcast_address(single_core_bitmask(core-1), 6, false);
     set_channel_map(10, address);
     loki_send_token(10);
+    
+    // Receive token from core 0, telling us that synchronisation has finished.
     loki_receive_token(6);
   } else {
     // All core 0s then synchronise between tiles using the same process.
@@ -322,7 +329,6 @@ void loki_sync(const uint cores) {
     loki_sync_tiles(num_tiles(cores));
 
     // All core 0s need to distribute the token throughout their tiles.
-    uint coresThisTile = cores_this_tile(cores, tile);
     if (coresThisTile > 1) {
       int bitmask = all_cores_except_0(coresThisTile);
       int address = loki_mcast_address(bitmask, 6, false);
