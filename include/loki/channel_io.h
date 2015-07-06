@@ -253,6 +253,8 @@ static inline int receive_any_input() {
   asm volatile (
     "fetchr 0f\n"
     "selch r18, 0xFFFFFFFF\n"   // get the channel on which data first arrives
+    "nor r0, r0, r0\n"          // nop until selch completes
+    "nor r0, r0, r0\n"
     "irdr.eop %0, r18\n0:\n"    // get the data from the channel
     : "=r" (data)
     :

@@ -153,6 +153,7 @@ static inline void init_remote_tile(const tile_id_t tile, const init_config* con
     "rmtexecute -> 10\n"        // begin remote execution
     "setchmapi 0, r7\n"         // instruction channel
     "setchmapi 1, r7\n"         // data channel
+    "nor r0, r0, r0\n"          // nop after setchmap before channel use
     "sendconfig r7, 61 -> 0\n"  // send memory configuration command
     "or r8, r7, r0\n"           // receive stack pointer
     "or r9, r8, r0\n"           // frame pointer = stack pointer
