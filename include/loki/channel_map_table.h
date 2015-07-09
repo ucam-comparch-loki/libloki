@@ -15,7 +15,8 @@ static inline channel_t get_channel_map(int id) {
   channel_t result;
   asm (
     "fetchr 0f\n"
-    "getchmap.eop %0, %1\n0:\n"
+    "getchmap %0, %1\n"        // need nop after getchmap to prevent
+    "nor.eop r0, r0, r0\n0:\n" // undefined behaviour
     : "=r"(result)
     : "r"(id)
   );
@@ -26,7 +27,8 @@ static inline channel_t get_channel_map(int id) {
 static inline void set_channel_map(int id, channel_t value) {
   asm (
     "fetchr 0f\n"
-    "setchmap.eop %0, %1\n0:\n"
+    "setchmap %0, %1\n"        // need nop after setchmap to prevent
+    "nor.eop r0, r0, r0\n0:\n" // undefined behaviour
     :
     : "r"(value), "r"(id)
   );
