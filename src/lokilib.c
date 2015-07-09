@@ -142,9 +142,9 @@ static inline void init_remote_tile(const tile_id_t tile, const init_config* con
   // Initialise core 0 (stack, memory connections, etc)
   loki_send(11, config->inst_mem);
   loki_send(11, config->data_mem);
-  loki_send(11, config->mem_config);
-
   loki_send(11, (int)config->stack_pointer - tile2int(tile)*CORES_PER_TILE*config->stack_size);
+  loki_send(11, (int)&loki_sleep);
+  
   // Still have to send function pointers, but only have 4 buffer spaces.
   // Wait until after sending instructions to send more data.
 
@@ -153,7 +153,6 @@ static inline void init_remote_tile(const tile_id_t tile, const init_config* con
     "rmtexecute -> 10\n"        // begin remote execution
     "setchmapi 0, r7\n"         // instruction channel
     "setchmapi 1, r7\n"         // data channel
-    "sendconfig r7, 61 -> 0\n"  // send memory configuration command
     "or r8, r7, r0\n"           // receive stack pointer
     "or r9, r8, r0\n"           // frame pointer = stack pointer
     "or r10, r7, r0\n"          // set return address
@@ -161,7 +160,6 @@ static inline void init_remote_tile(const tile_id_t tile, const init_config* con
     "0:\n"
   );
 
-  loki_send(11, (int)&loki_sleep);
   loki_send(11, (int)&receive_init_config);
   
   init_config* remotePointer = malloc(sizeof(init_config));
@@ -191,9 +189,6 @@ inline void loki_init(init_config* config) {
   // Data channel
   if (config->data_mem == 0)
     config->data_mem = get_channel_map(1);
-  // Memory config
-  if (config->mem_config == 0)
-    config->mem_config = loki_mem_configuration(ASSOCIATIVITY_1, LINESIZE_32, CACHE, GROUPSIZE_8);
 
   // Give each core connections to memory and a stack.
   if (config->cores > 1) {
@@ -218,7 +213,6 @@ void loki_init_default(const uint cores, const setup_func setup) {
   config->stack_size = 0x12000;
   config->inst_mem = 0;
   config->data_mem = 0;
-  config->mem_config = 0;
   config->config_func = setup;
 
   loki_init(config);

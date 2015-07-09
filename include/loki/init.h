@@ -19,7 +19,6 @@ typedef struct {
   size_t     stack_size;    //!< Input. Size of each core's stack (grows down).
   channel_t  inst_mem;      //!< Input. Address/configuration of instruction memory.
   channel_t  data_mem;      //!< Input. Address/configuration of data memory.
-  int        mem_config;    //!< Input. Memory configuration (banking, associativity, etc.).
   setup_func config_func;   //!< Input. Function which performs any program-specific setup (optional).
 } init_config;
 
