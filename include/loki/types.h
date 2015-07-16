@@ -7,10 +7,8 @@
 //! Unsigned integer.
 typedef unsigned int uint;
 
-//! Boolean value.
-typedef unsigned int bool;
-#define false 0
-#define true 1
+//! Boolean values.
+#include <stdbool.h>
 
 //! \brief Hack to allow commas to be passed as part of a macro argument, instead of
 //! looking like the end of an argument.
