@@ -36,7 +36,7 @@ enum CountConfig {
 //!
 //! Use \ref get_control_register instead where possible.
 #define GET_CONTROL_REGISTER(variable, id) { \
-  asm ( \
+  asm volatile ( \
     "fetchr 0f\n" \
     "cregrdi.eop %0, " #id "\n0:\n" \
     : "=r"(variable) \
@@ -71,7 +71,7 @@ static inline unsigned long get_control_register(enum ControlRegisters id) {
 //!
 //! Use \ref set_control_register instead where possible.
 #define SET_CONTROL_REGISTER(variable, id) { \
-  asm ( \
+  asm volatile ( \
     "fetchr 0f\n" \
     "cregwri.eop %0, " #id "\n0:\n" \
     : \
