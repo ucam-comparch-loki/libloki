@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #define DEFAULT_CREDIT_COUNT 4
+#define INFINITE_CREDIT_COUNT 63
 
 //============================================================================//
 // Shared
@@ -134,8 +135,8 @@ void receive_init_config() {
 static inline void init_remote_tile(const tile_id_t tile, const init_config* config) {
 
   // Connect to core 0 in the tile.
-  int inst_fifo = loki_core_address(tile, 0, 0, DEFAULT_CREDIT_COUNT);
-  int data_input = loki_core_address(tile, 0, 7, DEFAULT_CREDIT_COUNT);
+  int inst_fifo = loki_core_address(tile, 0, 0, INFINITE_CREDIT_COUNT);
+  int data_input = loki_core_address(tile, 0, 7, INFINITE_CREDIT_COUNT);
   set_channel_map(10, inst_fifo);
   set_channel_map(11, data_input);
 
@@ -275,7 +276,7 @@ void loki_sync_tiles(const uint tiles) {
   // All tiles except the first one send a token to their other neighbour
   // (after setting up a connection).
   if (tile > 0) {
-    int address = loki_core_address(int2tile(tile-1), 0, 5, DEFAULT_CREDIT_COUNT);
+    int address = loki_core_address(int2tile(tile-1), 0, 5, INFINITE_CREDIT_COUNT);
     set_channel_map(10, address);
     loki_send_token(10);
     loki_receive_token(5);
@@ -284,7 +285,7 @@ void loki_sync_tiles(const uint tiles) {
     assert(tile == 0);
     int destination;
     for (destination = 1; destination < tiles; destination++) {
-      int address = loki_core_address(int2tile(destination), 0, 5, DEFAULT_CREDIT_COUNT);
+      int address = loki_core_address(int2tile(destination), 0, 5, INFINITE_CREDIT_COUNT);
       set_channel_map(10, address);
       loki_send_token(10);
     }
@@ -441,8 +442,8 @@ void receive_config() {
 void distribute_to_remote_tile(tile_id_t tile, const distributed_func* config) {
 
   // Connect to core 0 in the tile.
-  channel_t inst_fifo = loki_core_address(tile, 0, 0, DEFAULT_CREDIT_COUNT);
-  channel_t data_input = loki_core_address(tile, 0, 7, DEFAULT_CREDIT_COUNT);
+  channel_t inst_fifo = loki_core_address(tile, 0, 0, INFINITE_CREDIT_COUNT);
+  channel_t data_input = loki_core_address(tile, 0, 7, INFINITE_CREDIT_COUNT);
   set_channel_map(10, inst_fifo);
   set_channel_map(11, data_input);
 
@@ -677,8 +678,8 @@ void simd_local_tile(const loop_config* config) {
 void simd_remote_tile(const tile_id_t tile, const loop_config* config) {
 
   // Connect to core 0 in the tile.
-  channel_t inst_fifo = loki_core_address(tile, 0, 0, DEFAULT_CREDIT_COUNT);
-  channel_t data_input = loki_core_address(tile, 0, 7, DEFAULT_CREDIT_COUNT);
+  channel_t inst_fifo = loki_core_address(tile, 0, 0, INFINITE_CREDIT_COUNT);
+  channel_t data_input = loki_core_address(tile, 0, 7, INFINITE_CREDIT_COUNT);
   set_channel_map(10, inst_fifo);
   set_channel_map(11, data_input);
 
