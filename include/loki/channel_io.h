@@ -85,14 +85,14 @@ static inline int loki_receive(const enum Channels channel) {
   int end_of_struct;\
   void* struct_ptr_copy;\
   asm volatile (\
-    "fetchpstr 0f\n"\
+    "fetchr 0f\n"\
     "addui %1, %2, 4\n"\
     "addu.eop %0, %2, %3\n"\
     "0:\n"\
     "ldw -4(%1) -> 1\n"\
     "setlt.p r0, %1, %0\n"\
     "or r0, r2, r0 -> " #output "\n"\
-    "if!p?fetchr 0f\n"\
+    "psel.fetchr 0b, 0f\n"\
     "addui.eop %1, %1, 4\n"\
     "0:\n"\
     : "+&r" (end_of_struct), "+&r" (struct_ptr_copy)\
@@ -151,13 +151,13 @@ static inline void loki_send_data(const void *data, size_t size, int output) {
   int end_of_struct;\
   void* struct_ptr_copy;\
   asm volatile (\
-    "fetchpstr 0f\n"\
+    "fetchr 0f\n"\
     "addui %1, %2, 4\n"\
     "addu.eop %0, %2, %3\n"\
     "0:\n"\
     "stw r" #input ", -4(%1) -> 1\n"\
     "setlt.p r0, %1, %0\n"\
-    "if!p?fetchr 0f\n"\
+    "psel.fetchr 0b, 0f\n"\
     "addui.eop %1, %1, 4\n"\
     "0:\n"\
     : "+&r" (end_of_struct), "+&r" (struct_ptr_copy)\
