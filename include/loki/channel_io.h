@@ -245,23 +245,38 @@ static inline void loki_receive_token(enum Channels channel) {
   loki_receive(channel);
 }
 
+//! \brief Wait for inputs on the specified channels. Return the channel number.
+//! \param variable must be an lvalue.
+//! \param mask must be an integer literal.
+//!
+//! If multiple inputs are available, select one in a fair round robin fashion.
+//! The mask is defined such that a 1 in bit position 0 selects the r2 channel.
+//!
+//! Use \ref loki_wait_input instead wherever possible.
+#define SELCH(variable, mask) {\
+  asm volatile (\
+    "fetchr 0f\n"\
+    "selch.eop %0, " #mask "\n0:"\
+    : "=r" (channel)\
+    :\
+    :\
+  );\
+}
+
+//! \brief Wait for input on any register-mapped input channel and return the
+//! channel number.
+//!
+//! If multiple inputs are available, select one in a fair round robin fashion.
+static inline enum Channels loki_wait_input(void) {
+  enum Channels channel;
+  SELCH(channel, 0x3F);
+  return channel;
+}
+
 //! \brief Wait for input on any register-mapped input channel, and return the value
 //! which arrived.
 static inline int receive_any_input() {
-  // r18 must be used for irdr in verilog implementation.
-  int data;
-  asm volatile (
-    "fetchr 0f\n"
-    "selch r18, 0xFFFFFFFF\n"   // get the channel on which data first arrives
-    "nor r0, r0, r0\n"          // nop until selch completes
-    "nor r0, r0, r0\n"
-    "irdr.eop %0, r18\n0:\n"    // get the data from the channel
-    : "=r" (data)
-    :
-    : "r18"
-  );
-
-  return data;
+  return loki_receive(loki_wait_input());
 }
 
 //! \brief Store 1 in variable if there is any data in the given input buffer.
