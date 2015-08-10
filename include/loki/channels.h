@@ -50,17 +50,42 @@ static inline channel_t loki_mcast_address(const enum MulticastDestinations bitm
   return (pipelineStallMode << 13) | (bitmask << 5) | (channel << 2);
 }
 //! Forms a memory channel to allow memory accesses.
-static inline channel_t loki_mem_address(const enum Memories           bank,
-                                         const enum Channels           channel,
+static inline channel_t loki_mem_address(const enum Memories           groupStart,
+                                         const enum Cores              returnCore,
                                          const enum Channels           returnChannel,
                                          const enum MemConfigGroupSize groupSize,
                                          const bool                    skipL1,
                                          const bool                    skipL2,
-                                         const bool                    checkTagsL1,
-                                         const bool                    checkTagsL2) {
-                                         
-  return (checkTagsL2 << 16) | (checkTagsL1 << 15) | (skipL2 << 14) | (skipL1 << 13)
-       | (groupSize << 11) | (returnChannel << 8) | (bank << 5) | (channel << 2) | 2;
+                                         const bool                    scratchpadL1,
+                                         const bool                    scratchpadL2) {
+  return (scratchpadL2 << 16) | (scratchpadL1 << 15) | (skipL2 << 14) | (skipL1 << 13)
+       | (groupSize << 11) | (returnChannel << 8) | (groupStart << 5) | (returnCore << 2) | 2;
+}
+
+//! Forms a memory channel which accesses a group of local cache banks as a
+//! cache.
+static inline channel_t loki_cache_address(
+    const enum Memories           groupStart
+  , const enum Cores              returnCore
+  , const enum Channels           returnChannel
+  , const enum MemConfigGroupSize groupSize
+) {
+  return loki_mem_address(
+    groupStart, returnCore, returnChannel, groupSize, false, false, false, false
+  );
+}
+
+//! Forms a memory channel which accesses a group of local cache banks as a
+//! scratchpad.
+static inline channel_t loki_scratchpad_address(
+    const enum Memories           groupStart
+  , const enum Cores              returnCore
+  , const enum Channels           returnChannel
+  , const enum MemConfigGroupSize groupSize
+) {
+  return loki_mem_address(
+    groupStart, returnCore, returnChannel, groupSize, false, false, true, false
+  );
 }
 
 //! Generate a bitmask with the lowest num_cores bits set to 1. This can then be
