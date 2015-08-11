@@ -55,7 +55,7 @@ void loki_spawn(void* func, const channel_t return_address, const int argc, ...)
 //! It is
 //! assumed that all required preparation has already taken place (e.g. storing
 //! function arguments in the appropriate registers).
-void loki_remote_execute(void* address, int core);
+void loki_remote_execute(void* address, core_id_t core);
 
 //! A core will stop work if it executes this function.
 void loki_sleep();

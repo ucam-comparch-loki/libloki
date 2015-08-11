@@ -119,18 +119,53 @@ static inline unsigned int cores_this_tile(const unsigned int cores, const tile_
 }
 
 //! Return a globally unique idenitifer for this core.
-static inline int get_unique_core_id(void) {
-  return get_control_register(CR_CPU_LOCATION);
+static inline core_id_t get_unique_core_id(void) {
+  return (core_id_t)get_control_register(CR_CPU_LOCATION);
+}
+
+//! Create a globally unique identifier for this core.
+static inline core_id_t make_unique_core_id(tile_id_t tile, enum Cores core) {
+  return (tile << 4) | (core_id_t)core;
+}
+
+//! Extract the core part of a global core id.
+static inline enum Cores get_unique_core_id_core(core_id_t id) {
+  return id & 0x7;
+}
+
+//! Extract the tile part of a global core id.
+static inline tile_id_t get_unique_core_id_tile(core_id_t id) {
+  return id >> 4;
+}
+
+//! Forms a channel address to talk to a particular core.
+//! \param core The core to connect to. If this is less than 8, the core is
+//!             assumed to be local rather than remote. Otherwise, a intertile
+//!             connection is used, uncredited.
+//! \param channel Channel to connect to.
+static inline channel_t loki_core_address_ex(
+    const core_id_t       core
+  , const enum Channels   channel
+) {
+  if (core < 8)
+    return loki_mcast_address(single_core_bitmask(core), channel, false);
+  else
+    return loki_core_address(
+        get_unique_core_id_tile(core)
+      , get_unique_core_id_core(core)
+      , channel
+      , 63
+      );
 }
 
 //! Return the core's position within its tile.
 static inline enum Cores get_core_id() {
-  return get_control_register(CR_CPU_LOCATION) & 0x7;
+  return get_unique_core_id_core(get_control_register(CR_CPU_LOCATION));
 }
 
 //! Return the ID of the tile the core is in.
 static inline tile_id_t get_tile_id() {
-  return get_control_register(CR_CPU_LOCATION) >> 4;
+  return get_unique_core_id_tile(get_control_register(CR_CPU_LOCATION));
 }
 
 #include <loki/channel_io.h>

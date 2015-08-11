@@ -225,9 +225,9 @@ void loki_init_default(const uint cores, const setup_func setup) {
 
 // Get a core to execute a function. The remote core must already have all of
 // the necessary function arguments in the appropriate registers.
-void loki_remote_execute(void* func, int core) {
-  const channel_t ipk_fifo = loki_mcast_address(single_core_bitmask(core), 0, false);
-  const channel_t data_input = loki_mcast_address(single_core_bitmask(core), 7, false);
+void loki_remote_execute(void* func, core_id_t core) {
+  const channel_t ipk_fifo = loki_core_address_ex(core, 0);
+  const channel_t data_input = loki_core_address_ex(core, 7);
   set_channel_map(2, ipk_fifo);
   set_channel_map(3, data_input);
 

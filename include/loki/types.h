@@ -27,6 +27,8 @@ typedef unsigned int uint;
 
 //! Tile ID - a tile on the processor.
 typedef unsigned int tile_id_t;
+//! Core ID - a core on the processor.
+typedef unsigned int core_id_t;
 
 //! Components of a tile.
 enum Cores {
