@@ -59,7 +59,7 @@ static void init_run_config(setup_func func, unsigned int cores) {
 static inline void init_local_tile(const init_config* config) {
 
   uint tile = get_tile_id();
-  uint cores = cores_this_tile(config->cores, tile);
+  uint cores = cores_this_tile(config->cores, tile, tile_id(1, 1));
 
   if (cores <= 1) {
     if (config->config_func != NULL)
@@ -295,13 +295,13 @@ void loki_sync_tiles(const uint tiles) {
 // Only continue after all cores have executed this function. Tokens from each
 // core are collected, then redistributed to show when all have been received.
 // TODO: could speedup sync within a tile by using multicast until buffers fill?
-void loki_sync(const uint cores) {
+void loki_sync_ex(const uint cores, const tile_id_t first_tile) {
   if (cores <= 1)
     return;
 
   uint core = get_core_id();
   tile_id_t tile = get_tile_id();
-  uint coresThisTile = cores_this_tile(cores, tile);
+  uint coresThisTile = cores_this_tile(cores, tile, first_tile);
 
   // All cores except the final one wait until they receive a token from their
   // neighbour. (A tree structure would be more efficient, but there isn't much
@@ -369,7 +369,7 @@ void loki_tile_sync(const uint cores) {
 
 // Wait until the end_parallel_section function has been called. This must be
 // executed on core 0.
-inline void wait_end_parallel_section() {
+static inline void wait_end_parallel_section() {
   loki_receive_token(7);
 }
 
@@ -380,12 +380,18 @@ inline void wait_end_parallel_section() {
 //   roles for different cores.
 //============================================================================//
 
+struct distributed_func_internal {
+  distributed_func const *config;
+  tile_id_t first_tile;
+};
+
 // Start cores on the current tile. This must be executed by core 0.
-void distribute_to_local_tile(const distributed_func* config) {
+static void distribute_to_local_tile(const struct distributed_func_internal *internal) {
+  const distributed_func *config = internal->config;
 
   // Make multicast connections to all other members of the SIMD group.
   const tile_id_t tile = get_tile_id();
-  const int cores = cores_this_tile(config->cores, tile);
+  const int cores = cores_this_tile(config->cores, tile, internal->first_tile);
 
   if (cores > 1) {
     const unsigned int bitmask = all_cores_except_0(cores);
@@ -418,8 +424,10 @@ void distribute_to_local_tile(const distributed_func* config) {
 
 // Make a copy of the configuration struct in this tile, as it is awkward/
 // impossible to share it via memory.
-void receive_config() {
-  distributed_func* config = malloc(sizeof(distributed_func));
+static void receive_config() {
+  struct distributed_func_internal* internal = malloc(sizeof(struct distributed_func_internal));
+  distributed_func *config = malloc(sizeof(distributed_func));
+  internal->config = config;
   //config = loki_receive(7);
   void* val;
   val = (void *)loki_receive(7);
@@ -435,11 +443,12 @@ void receive_config() {
 
   loki_receive_data(data, config->data_size, 7);
 
-  distribute_to_local_tile(config);
+  distribute_to_local_tile(internal);
 }
 
 // Start cores on another tile.
-void distribute_to_remote_tile(tile_id_t tile, const distributed_func* config) {
+static void distribute_to_remote_tile(tile_id_t tile, struct distributed_func_internal const *internal) {
+  const distributed_func *config = internal->config;
 
   // Connect to core 0 in the tile.
   channel_t inst_fifo = loki_core_address(tile, 0, 0, INFINITE_CREDIT_COUNT);
@@ -473,14 +482,18 @@ void distribute_to_remote_tile(tile_id_t tile, const distributed_func* config) {
 
 // The main function to call to execute the same function on many cores.
 void loki_execute(const distributed_func* config) {
+  struct distributed_func_internal internal = {
+      .config = config
+    , .first_tile = get_tile_id()
+  };
 
   if (config->cores > 1) {
     int tile;
     for (tile = 1; tile*CORES_PER_TILE < config->cores; tile++) {
-      distribute_to_remote_tile(int2tile(tile), config);
+      distribute_to_remote_tile(int2tile(tile), &internal);
     }
 
-    distribute_to_local_tile(config);
+    distribute_to_local_tile(&internal);
   }
   else
     config->func(config->data);
@@ -498,13 +511,18 @@ void loki_execute(const distributed_func* config) {
 //   TODO: option to use chunked distribution (requires a division)
 //============================================================================//
 
+struct loop_config_internal {
+  loop_config const * config;
+  tile_id_t first_tile;
+};
+
 // Signal that this core has finished its share of the SIMD loop. This is done
 // in such a way that when the control core (the one that started the SIMD stuff)
 // receives the signal, it knows that all cores have finished and that it is
 // safe to continue through the program.
 // TODO: it may be worth combining this step with the reduction stage - e.g.
 // instead of sending a token, send this core's partial result.
-inline void simd_finished(const loop_config* config, int core) {
+static inline void simd_finished(const loop_config* config, int core) {
 
   // All cores except the final one wait until they receive a token from their
   // neighbour. (A tree structure would be more efficient, but there isn't much
@@ -526,7 +544,7 @@ inline void simd_finished(const loop_config* config, int core) {
 // iterations are currently striped across the cores - this avoids needing a
 // division to find out which cores execute which iterations, but may reduce
 // locality.
-void worker_core(const loop_config* config, int core) {
+static void worker_core(const loop_config* config, int core) {
 
   int cores = config->cores;
   int iterations = config->iterations;
@@ -643,11 +661,12 @@ void simd_member(const loop_config* config, const int core) {
 }
 
 // Set up a SIMD group on the current tile. This must be executed by core 0.
-void simd_local_tile(const loop_config* config) {
+static void simd_local_tile(const struct loop_config_internal* internal) {
+  loop_config const *config = internal->config;
 
   // Make multicast connections to all other members of the SIMD group.
   const tile_id_t tile = get_tile_id();
-  const int cores = cores_this_tile(config->cores, tile);
+  const int cores = cores_this_tile(config->cores, tile, internal->first_tile);
   const unsigned int bitmask = all_cores_except_0(cores);
   const channel_t ipk_fifos = loki_mcast_address(bitmask, 0, false);
   const channel_t data_inputs = loki_mcast_address(bitmask, 7, false);
@@ -675,7 +694,7 @@ void simd_local_tile(const loop_config* config) {
 }
 
 // Set up a SIMD group on another tile.
-void simd_remote_tile(const tile_id_t tile, const loop_config* config) {
+static void simd_remote_tile(const tile_id_t tile, const struct loop_config_internal *internal) {
 
   // Connect to core 0 in the tile.
   channel_t inst_fifo = loki_core_address(tile, 0, 0, INFINITE_CREDIT_COUNT);
@@ -683,7 +702,7 @@ void simd_remote_tile(const tile_id_t tile, const loop_config* config) {
   set_channel_map(10, inst_fifo);
   set_channel_map(11, data_input);
 
-  loki_send(11, (int)config);                 // send pointer to configuration info
+  loki_send(11, (int)internal);               // send pointer to configuration info
   loki_send(11, (int)&loki_sleep);            // send function pointers
   loki_send(11, (int)&simd_local_tile);
 
@@ -703,14 +722,18 @@ void simd_remote_tile(const tile_id_t tile, const loop_config* config) {
 
 // The main function to call to execute the loop in parallel.
 void simd_loop(const loop_config* config) {
+  struct loop_config_internal internal = {
+      .config = config
+    , .first_tile = get_tile_id()
+  };
 
   if (config->cores > 1) {
     int tile;
     for (tile = 1; tile < num_tiles(config->cores); tile++) {
-      simd_remote_tile(int2tile(tile), config);
+      simd_remote_tile(int2tile(tile), &internal);
     }
 
-    simd_local_tile(config);
+    simd_local_tile(&internal);
   }
 
   // Now that all the other cores are going, this core can start on its share of

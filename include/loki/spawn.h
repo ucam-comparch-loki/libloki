@@ -17,7 +17,11 @@ typedef struct {
   size_t       data_size;   //!< Size of data in bytes.
 } distributed_func;
 
-//! Have all cores execute the same function simultaneously.
+//! \brief Have all cores execute the same function simultaneously.
+//!
+//! The cores used are from core 0 of the current tile onwards.
+//!
+//! Warning: Must be executed on core 0 of the first tile in the group.
 void loki_execute(const distributed_func* config);
 
 //! \brief Wait for all tiles between 0 and (tiles-1) to reach this point before
@@ -30,11 +34,26 @@ void loki_sync_tiles(const uint cores);
 
 //! \brief Wait for all cores between 0 and (cores-1) to reach this point before
 //! continuing.
+//! \param cores Total number of cores participating in sync.
+//! \param first_tile First tile participating in sync.
 //!
 //! (Warning: quite expensive/slow. Use sparingly.)
 //!
 //! Warning: Overwrites channel map table entry 10 and uses `CH_REGISTER_5` and `CH_REGISTER_6` on each core.
-void loki_sync(const uint cores);
+void loki_sync_ex(const unsigned int cores, const tile_id_t first_tile);
+
+//! \brief Wait for all cores between 0 and (cores-1) to reach this point before
+//! continuing.
+//! \param cores Total number of cores participating in sync.
+//!
+//! (Warning: quite expensive/slow. Use sparingly.)
+//!
+//! Warning: Overwrites channel map table entry 10 and uses `CH_REGISTER_5` and `CH_REGISTER_6` on each core.
+static inline void loki_sync(const uint cores) {
+  loki_sync_ex(cores, tile_id(1, 1));
+}
+
+
 
 //! \brief Wait for all cores between 0 and (cores-1) on a tile to reach this point before
 //! continuing.

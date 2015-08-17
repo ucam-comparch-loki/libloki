@@ -112,10 +112,17 @@ static inline unsigned int num_tiles(const unsigned int cores) {
 
 //! Calculate the number of cores that are active on a given tile, given a total
 //! number of active cores.
-static inline unsigned int cores_this_tile(const unsigned int cores, const tile_id_t tile) {
-  return (cores - tile2int(tile) * CORES_PER_TILE > CORES_PER_TILE)
+//! \param cores Total number of cores executing.
+//! \param tile ID of this tile.
+//! \param first_tile ID of first tile in the group.
+static inline unsigned int cores_this_tile(
+    const unsigned int cores
+  , const tile_id_t tile
+  , const tile_id_t first_tile
+) {
+  return (cores - (tile2int(tile) - tile2int(first_tile)) * CORES_PER_TILE > CORES_PER_TILE)
        ? CORES_PER_TILE
-       : cores - tile2int(tile) * CORES_PER_TILE;
+       : cores - (tile2int(tile) - tile2int(first_tile)) * CORES_PER_TILE;
 }
 
 //! Return a globally unique idenitifer for this core.
