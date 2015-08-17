@@ -31,7 +31,6 @@
 
 #include <loki/barrier.h>
 #include <loki/channels.h>
-#include <loki/config.h>
 #include <loki/control_registers.h>
 #include <loki/syscall.h>
 
