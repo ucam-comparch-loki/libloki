@@ -31,8 +31,19 @@ typedef struct {
   reduce_func         reduce;         //!< Function which combines all partial results (optional)
 } loop_config;
 
-// Various ways of executing a loop in parallel.
-void simd_loop(const loop_config* config);      //!< All cores execute loop
-void worker_farm(const loop_config* config);    //!< One master, rest of cores are workers
+//! \brief Run a loop described by config, with a fixed mapping of iterations to
+//! cores.
+//!
+//! \warning Overwrites channel map table entries 2, 3, replaces and restores 8 and uses `CH_REGISTER_3`.
+void simd_loop(const loop_config* config);
+
+//! \brief Run a loop described by config, dynamically allocating iterations to
+//! cores as they become available.
+//!
+//! `config->cores` must be at least 2 and at most 6.
+//!
+//! \warning Overwrites channel map table entries 2, 3 and uses `CH_REGISTER_3`,
+//! `CH_REGISTER_4`, `CH_REGISTER_5`, `CH_REGISTER_6`, `CH_REGISTER_7`.
+void worker_farm(const loop_config* config);
 
 #endif

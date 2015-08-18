@@ -37,6 +37,8 @@ typedef struct {
 } pipeline_config;
 
 //! Start a pipeline pattern with the given config.
+//!
+//! \warning Overwrites channel map table entries 2, 3, replaces and restores 8 and uses `CH_REGISTER_3`.
 void pipeline_loop(const pipeline_config* config);
 
 //! Information required to describe a data driven pipeline with one core per stage.
@@ -49,6 +51,8 @@ typedef struct {
 } dd_pipeline_config;
 
 //! Start a data driven pipeline pattern with the given config.
+//!
+//! \warning Overwrites channel map table entries 2, 3, replaces and restores 8 and uses `CH_REGISTER_3`.
 void dd_pipeline_loop(const dd_pipeline_config* config);
 
 #include <loki/patterns/dataflow.h> // For end_parallel_section.

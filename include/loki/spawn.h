@@ -21,7 +21,9 @@ typedef struct {
 //!
 //! The cores used are from core 0 of the current tile onwards.
 //!
-//! Warning: Must be executed on core 0 of the first tile in the group.
+//! \warning Must be executed on core 0 of the first tile in the group.
+//!
+//! \warning Overwrites channel map table entries 2 and 3, uses `CH_REGISTER_3`.
 void loki_execute(const distributed_func* config);
 
 //! \brief Wait for all tiles between 0 and (tiles-1) to reach this point before
@@ -29,7 +31,7 @@ void loki_execute(const distributed_func* config);
 //!
 //! This function may only be executed on core 0 of each tile.
 //!
-//! Warning: Overwrites channel map table entry 10 and uses `CH_REGISTER_5` on each core.
+//! \warning Overwrites channel map table entry 2 and uses `CH_REGISTER_3`.
 void loki_sync_tiles(const uint cores);
 
 //! \brief Wait for all cores between 0 and (cores-1) to reach this point before
@@ -37,29 +39,29 @@ void loki_sync_tiles(const uint cores);
 //! \param cores Total number of cores participating in sync.
 //! \param first_tile First tile participating in sync.
 //!
-//! (Warning: quite expensive/slow. Use sparingly.)
+//! \warning Quite expensive/slow. Use sparingly.
 //!
-//! Warning: Overwrites channel map table entry 10 and uses `CH_REGISTER_5` and `CH_REGISTER_6` on each core.
+//! \warning Overwrites channel map table entry 2 and uses `CH_REGISTER_3`.
 void loki_sync_ex(const unsigned int cores, const tile_id_t first_tile);
 
 //! \brief Wait for all cores between 0 and (cores-1) to reach this point before
 //! continuing.
 //! \param cores Total number of cores participating in sync.
 //!
-//! (Warning: quite expensive/slow. Use sparingly.)
+//! \warning Quite expensive/slow. Use sparingly.
 //!
-//! Warning: Overwrites channel map table entry 10 and uses `CH_REGISTER_5` and `CH_REGISTER_6` on each core.
+//! \warning Overwrites channel map table entry 2 and uses `CH_REGISTER_3`.
 static inline void loki_sync(const uint cores) {
   loki_sync_ex(cores, tile_id(1, 1));
 }
-
-
 
 //! \brief Wait for all cores between 0 and (cores-1) on a tile to reach this point before
 //! continuing.
 //!
 //! Slightly faster synchronisation if all cores are on the same tile.
 //! Also allows synchronisation which doesn't start at tile 0.
+//!
+//! \warning Overwrites channel map table entry 2 and uses `CH_REGISTER_3`.
 void loki_tile_sync(const uint cores);
 
 //! \brief Execute func on another core, and return the result to a given location.
@@ -67,16 +69,16 @@ void loki_tile_sync(const uint cores);
 //! Note that due to various limitations of parameter passing, the function is
 //! currently limited to having a maximum of five arguments.
 //! For the moment, "another core" is always core 1.
+//!
+//! \warning Overwrites channel map table entries 2 and 3 and uses `CH_REGISTER_3`.
 void loki_spawn(void* func, const channel_t return_address, const int argc, ...);
 
 //! \brief Get a core to execute the instruction packet at the given address.
 //!
-//! It is
-//! assumed that all required preparation has already taken place (e.g. storing
-//! function arguments in the appropriate registers).
-void loki_remote_execute(void* address, core_id_t core);
+//! \warning Overwrites channel map table entries 2 and 3 and uses `CH_REGISTER_3`.
+void loki_remote_execute(void (*address)(void), core_id_t core);
 
 //! A core will stop work if it executes this function.
-void loki_sleep();
+void loki_sleep(void) __attribute__((__noreturn__));
 
 #endif

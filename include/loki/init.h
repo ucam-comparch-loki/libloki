@@ -43,9 +43,9 @@ typedef struct {
 //! The function `config->config_func` is run on each core. This is optional, set to
 //! `NULL` to skip.
 //!
-//! This function must be executed before any other function in this library.
-//! It may overwrite any channel map table entry on any core, and generate network
-//! traffic.
+//! \warning This function must be executed before any other function in this
+//! library. It may overwrite any channel map table entry on any core, and
+//! generate network traffic.
 void loki_init(init_config* config);
 
 //! \brief Wrapper for loki_init which provides sensible defaults.
@@ -58,7 +58,7 @@ void loki_init(init_config* config);
 //!
 //! `config->mem_config` is set to `loki_mem_config(ASSOCIATIVITY_1, LINESIZE_32, CACHE, GROUPSIZE_8)`.
 //!
-//! This function must be executed before any other function in this library.
+//! \warning This function must be executed before any other function in this library.
 //! It may overwrite any channel map table entry on any core, and generate network
 //! traffic.
 void loki_init_default(const uint cores, const setup_func setup);

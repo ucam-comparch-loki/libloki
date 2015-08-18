@@ -13,7 +13,7 @@
 //! Get an entry from the channel map table.
 static inline channel_t get_channel_map(int id) {
   channel_t result;
-  asm (
+  asm volatile (
     "fetchr 0f\n"
     "getchmap %0, %1\n"        // need nop after getchmap to prevent
     "nor.eop r0, r0, r0\n0:\n" // undefined behaviour
@@ -25,7 +25,7 @@ static inline channel_t get_channel_map(int id) {
 
 //! Set an entry in the channel map table.
 static inline void set_channel_map(int id, channel_t value) {
-  asm (
+  asm volatile (
     "fetchr 0f\n"
     "setchmap %0, %1\n"        // need nop after setchmap to prevent
     "nor.eop r0, r0, r0\n0:\n" // undefined behaviour
@@ -52,6 +52,51 @@ static inline void loki_connect_helix(int output, int offset, enum Channels chan
   
   channel_t address = loki_mcast_address(single_core_bitmask(next_core), channel, false);
   set_channel_map(output, address);
+}
+
+//! \brief Save a channel map table entry to be later restored with \ref
+//! channel_map_restore.
+//!
+//! \param id Channel to save.
+//! \return A value to be pass to \ref channel_map_restore to restore the
+//! channel's old value.
+//!
+//! Should be used for preserving callee saved channels.
+static inline channel_t channel_map_save(int id) {
+  return get_channel_map(id);
+}
+
+//! \brief Restore a saved channel map table entry, saved with \ref
+//! channel_map_save or \ref channel_map_swap.
+//!
+//! \param id Channel to restore.
+//! \param value Return value of \ref channel_map_save.
+//!
+//! Should be used for restoring callee saved channels.
+static inline void channel_map_restore(int id, channel_t value) {
+  set_channel_map(id, value);
+}
+
+//! \brief Replace a channel entry with a new one, returning the old one to be
+//! restored later with \ref channel_map_restore.
+//!
+//! \param id Channel to update.
+//! \param value New value to put in the channel map table.
+//! \return A value to be pass to \ref channel_map_restore to restore the
+//! channel's old value.
+//!
+//! Should be used for preserving callee saved channels.
+static inline channel_t channel_map_swap(int id, channel_t value) {
+  channel_t result;
+  asm volatile (
+    "fetchr 0f\n"
+    "getchmap %0, %2\n"
+    "setchmap %1, %2\n"
+    "nor.eop r0, r0, r0\n0:\n"
+    : "=&r"(result)
+    : "r"(value), "r"(id)
+  );
+  return result;
 }
 
 #endif

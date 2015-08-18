@@ -27,12 +27,16 @@ typedef struct {
 } dataflow_config;
 
 //! Executes the dataflow to completion. Each core will execute its function.
+//!
+//! \warning Overwrites channel map table entries 2 and 3 and uses `CH_REGISTER_3`.
 void start_dataflow(const dataflow_config* config);
 
 //! \brief Signal that all results have been produced by the current execution pattern,
 //! so it is now possible to break cores out of their infinite loops.
 //!
 //! Currently used by the dataflow and data-driven pipeline patterns.
+//!
+//! \warning Overwrites channel map table entry 2.
 void end_parallel_section(void);
 
 //! \brief Define an instruction packet which should be executed repeatedly.
