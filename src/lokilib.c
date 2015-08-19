@@ -443,6 +443,8 @@ static void receive_config() {
 
   loki_receive_data(data, config->data_size, 3);
 
+  internal->first_tile = loki_receive(3);
+
   distribute_to_local_tile(internal);
 }
 
@@ -478,6 +480,7 @@ static void distribute_to_remote_tile(tile_id_t tile, struct distributed_func_in
 
   loki_send_data(config->data, config->data_size, 3);
 
+  loki_send(3, internal->first_tile);
 }
 
 // The main function to call to execute the same function on many cores.
