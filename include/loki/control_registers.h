@@ -47,7 +47,6 @@ enum CountConfig {
 
 //! Return the value in a control register.
 static inline unsigned long get_control_register(enum ControlRegisters id) {
-  assert(environment != ENV_CSIM); // CSIM doesn't support control registers
   unsigned long value;
   switch (id) {
   case CR_CPU_LOCATION:   GET_CONTROL_REGISTER(value,  1); return value;
@@ -82,7 +81,6 @@ static inline unsigned long get_control_register(enum ControlRegisters id) {
 
 //! Set a control register.
 static inline void set_control_register(enum ControlRegisters id, unsigned long value) {
-  assert(environment != ENV_CSIM); // CSIM doesn't support control registers
   switch (id) {
   case CR_CPU_LOCATION:   SET_CONTROL_REGISTER(value,  1); return;
   case CR_COUNT0_CONFIG:  SET_CONTROL_REGISTER(value,  4); return;

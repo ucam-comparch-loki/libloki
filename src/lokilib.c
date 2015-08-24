@@ -11,43 +11,6 @@
 //   Various helper functions used by the parallel implementations.
 //============================================================================//
 
-enum Environments environment = ENV_NONE;
-int environment_version = 0;
-
-static inline void detect_environment(void) {
-  int test[2] = { 0, 1 };
-  int csim;
-  // CSim is old, and easy to fool. It has a bug where it returns the wrong result in this code.
-  asm (
-    "ldw 0(%1) -> 1\n"
-    "ldw 4(%1) -> 1\n"
-    "or %0, r2, r0\n"
-    "or r0, r2, r0\n"
-    : "=r"(csim)
-    : "r"(test)
-  );
-  if (csim) {
-    environment = ENV_CSIM;
-    return;
-  }
-
-  // Easiest way to tell simulators apart at the moment is the channel map table.
-  channel_t default_ch2 = get_channel_map(0);
-  if (default_ch2 != 0) {
-     // All verilog variants initialise channel 2 by default -> we know it's VCS, Verilator or FPGA.
-     if (*(int*)0xffc != 0) {
-        // The memory wasn't cleared. Must be FPGA.
-        environment = ENV_FPGA;
-     } else {
-        // By design, VCS and Verilator are equivalent. Pick the more likely.
-        environment = ENV_VCS;
-     }
-  } else {
-     // Channel 2 wasn't initialised -> lokisim.
-     environment = ENV_LOKISIM;
-  }
-}
-
 static void init_run_config(setup_func func, unsigned int cores) {
   func();
   // Ensure all cores (across all tiles) are done with the config func before returning.
@@ -173,9 +136,6 @@ static inline void init_remote_tile(const tile_id_t tile, const init_config* con
 
 inline void loki_init(init_config* config) {
   assert(config->cores > 0);
-  
-  if (environment == ENV_NONE)
-    detect_environment();
 
   if (config->stack_pointer == 0) {
     char *stack_pointer; // Core 0's default stack pointer

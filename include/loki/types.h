@@ -136,33 +136,5 @@ enum MemConfigAssociativity {
   ASSOCIATIVITY_8     = 3  //!< 8 way set associative.
 };
 
-//! Possible execution environments.
-enum Environments {
-  ENV_NONE,     //!< The variable has not yet been set.
-  ENV_LOKISIM,  //!< lokisim simulator.
-  ENV_FPGA,     //!< FPGA.
-  ENV_VCS,      //!< Synopsys' VCS verilog simulator.
-  ENV_CSIM,     //!< CSim behavioural simulator.
-  ENV_VERILATOR //!< Verilator verilog simulator.
-};
-
-//! \brief The execution environment of the current program.
-//!
-//! In an ideal world, it shouldn't matter what hardware or simulator is
-//! running the application; they should all be the same architecture. However,
-//! the nature of the project is that they all have subtle differences and
-//! implemented different features, so some sensible way of testing the support
-//! is needed. Unfortunately, most simulators crash on an unsupported feature,
-//! so feature testing must be done in advance.
-//!
-//! This variable not valid until a loki_init call.
-extern enum Environments environment;
-//! \brief The version of the execution environment (where such a value is meaningful).
-//!
-//! An environment specific header will define values for this variable if it
-//! is used. If not, it will be 0.
-//!
-//! This variable not valid until a loki_init call.
-extern int environment_version;
 
 #endif

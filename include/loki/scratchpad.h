@@ -13,7 +13,6 @@
 
 //! Read the word in the scratchpad at the given address.
 static inline int scratchpad_read(unsigned int address) {
-  assert(environment != ENV_CSIM); // CSIM doesn't support scratchpads
   assert(address < SCRATCHPAD_NUM_WORDS);
   int result;
   asm volatile (
@@ -28,7 +27,6 @@ static inline int scratchpad_read(unsigned int address) {
 
 //! Write the given word into the scratchpad at the given address.
 static inline void scratchpad_write(unsigned int address, int value) {
-  assert(environment != ENV_CSIM); // CSIM doesn't support scratchpads
   assert(address < SCRATCHPAD_NUM_WORDS);
   asm volatile (
     "fetchr 0f\n"
