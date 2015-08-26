@@ -18,6 +18,8 @@ typedef unsigned int uint;
 
 //! Number of cores in each tile.
 #define CORES_PER_TILE 8
+//! Number of memory banks in each tile.
+#define BANKS_PER_TILE 8
 
 //! Number of rows of compute tiles on the chip (excluding I/O halo).
 #define COMPUTE_TILE_ROWS 4
@@ -27,6 +29,8 @@ typedef unsigned int uint;
 
 //! Tile ID - a tile on the processor.
 typedef unsigned int tile_id_t;
+//! Size of \ref tile_id_t in bits.
+#define TILE_ID_T_BITS 6
 //! Core ID - a core on the processor.
 typedef unsigned int core_id_t;
 
@@ -62,7 +66,14 @@ enum MulticastDestinations {
   MULTICAST_CORE_4 = 0x10, //!< Core 4.
   MULTICAST_CORE_5 = 0x20, //!< Core 5.
   MULTICAST_CORE_6 = 0x40, //!< Core 6.
-  MULTICAST_CORE_7 = 0x80  //!< Core 7.
+  MULTICAST_CORE_7 = 0x80, //!< Core 7.
+
+  //! No cores mask.
+  MULTICAST_CORE_NONE = 0,
+  //! All cores mask.
+  MULTICAST_CORE_ALL =
+    MULTICAST_CORE_0 | MULTICAST_CORE_1 | MULTICAST_CORE_2 | MULTICAST_CORE_3 |
+    MULTICAST_CORE_4 | MULTICAST_CORE_5 | MULTICAST_CORE_6 | MULTICAST_CORE_7,
 };
 
 //! Input channels usable in communications.

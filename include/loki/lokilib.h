@@ -32,6 +32,7 @@
 #include <loki/barrier.h>
 #include <loki/channels.h>
 #include <loki/control_registers.h>
+#include <loki/memory.h>
 #include <loki/syscall.h>
 
 //============================================================================//

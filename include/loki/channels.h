@@ -175,6 +175,12 @@ static inline tile_id_t get_tile_id() {
   return get_unique_core_id_tile(get_control_register(CR_CPU_LOCATION));
 }
 
+//! It is common to have a core send data out to all other cores - it does not
+//! need to send data to itself. num_cores is inclusive of current.
+static inline enum MulticastDestinations all_cores_except_current(uint num_cores) {
+  return all_cores(num_cores) & ~single_core_bitmask(get_core_id());
+}
+
 #include <loki/channel_io.h>
 #include <loki/channel_map_table.h>
 

@@ -183,6 +183,309 @@ void loki_init_default(const uint cores, const setup_func setup) {
 
 }
 
+//============================================================================//
+// Reconfiguration
+//
+//   Allow safe dynamic reconfiguration of the memory system.
+//============================================================================//
+
+// Give each core a connection to a distinct memory bank all replies to the
+// master core.
+static void loki_memory_reconfigure_setup_task(enum Cores core) {
+  channel_t channel =
+    loki_cache_address(
+      (enum Memories)get_core_id()
+    , core
+    , CH_REGISTER_4
+    , GROUPSIZE_1
+    );
+  set_channel_map(3, channel);
+}
+
+// Have all cores execute loki_memory_reconfigure_setup_task.
+static inline void loki_memory_reconfigure_setup(void) {
+  channel_t address;
+
+  address = loki_mcast_address(all_cores_except_current(8), CH_IPK_FIFO, false);
+  set_channel_map(2, address);
+  address = loki_mcast_address(all_cores_except_current(8), CH_REGISTER_3, false);
+  set_channel_map(3, address);
+
+  assert(BANKS_PER_TILE == CORES_PER_TILE);
+  asm volatile (
+    "fetchr 0f\n"
+    "or r0, %2, r0 -> 3\n"
+    "rmtexecute -> 2\n"
+    "lli r10, %%lo(%0)\n"
+    "lui r10, %%hi(%0)\n"
+    "lli r11, %%lo(%1)\n"
+    "lui r11, %%hi(%1)\n"
+    "or r13, r3, r0\n"
+    "fetch.eop r11\n0:\n"
+  :
+  : "i"(loki_sleep), "i"(loki_memory_reconfigure_setup_task), "r"(get_core_id())
+  );
+
+  loki_memory_reconfigure_setup_task(get_core_id());
+}
+
+// Send the new directory entries to the appropriate core.
+static inline void loki_memory_reconfigure_send_directory_entries(
+  loki_memory_directory_configuration_t const value
+) {
+  assert(LOKI_MEMORY_DIRECTORY_SIZE == CORES_PER_TILE * 2);
+
+  for (int i = 0; i < LOKI_MEMORY_DIRECTORY_SIZE; i += 2) {
+    channel_t address =
+      loki_mcast_address(single_core_bitmask(i/2), CH_REGISTER_5, false);
+    set_channel_map(4, address);
+
+    loki_send(4, (i + 0) << value.mask_index);
+    loki_send(4, loki_memory_directory_entry_to_int(value.entries[i + 0]));
+    loki_send(4, (i + 1) << value.mask_index);
+    loki_send(4, loki_memory_directory_entry_to_int(value.entries[i + 1]));
+  }
+}
+
+// Send the new instruction and data channels to each core.
+static inline void loki_memory_reconfigure_send_channels(
+  loki_memory_cache_configuration_t const value
+) {
+  assert(BANKS_PER_TILE == 8);
+
+  for (int i = 0; i < CORES_PER_TILE; i++) {
+    channel_t address =
+      loki_mcast_address(single_core_bitmask(i), CH_REGISTER_3, false);
+    set_channel_map(4, address);
+
+    // Make a bitmask of banks used by this core for icache and dcache.
+    int dbitmask = 0;
+    int ibitmask = 0;
+    for (int j = 0; j < BANKS_PER_TILE; j++) {
+      if (value.banks[j].dcache & single_core_bitmask(i))
+        dbitmask |= 0x101 << j;
+      if (value.banks[j].icache & single_core_bitmask(i))
+        ibitmask |= 0x101 << j;
+    }
+
+    channel_t dmem, imem;
+
+    // Default to discard addresses.
+    dmem = loki_mcast_address(0, CH_REGISTER_2, false);
+    imem = loki_mcast_address(0, CH_IPK_CACHE, false);
+
+    enum MemConfigGroupSize group_size;
+    int gs;
+
+    // Detect the group size and start for dcache.
+    for (gs = 8, group_size = GROUPSIZE_8; gs > 0; gs /= 2, group_size--) {
+      for (int j = 0; j < BANKS_PER_TILE; j++) {
+        if (((dbitmask >> j) & ((1 << gs) - 1)) == ((1 << gs) - 1)) {
+          dmem = loki_mem_address(
+              j, i, CH_REGISTER_2, group_size
+            , value.dcache_skip_l1 & single_core_bitmask(i)
+            , value.dcache_skip_l2 & single_core_bitmask(i)
+            , false, false
+            );
+          gs = 1;
+          break;
+        }
+      }
+    }
+
+    // Detect the group size and start for icache.
+    for (gs = 8, group_size = GROUPSIZE_8; gs > 0; gs /= 2, group_size--) {
+      for (int j = 0; j < BANKS_PER_TILE; j++) {
+        if (((ibitmask >> j) & ((1 << gs) - 1)) == ((1 << gs) - 1)) {
+          imem = loki_mem_address(
+              j, i, CH_IPK_CACHE, group_size
+            , value.icache_skip_l1 & single_core_bitmask(i)
+            , value.icache_skip_l2 & single_core_bitmask(i)
+            , false, false
+            );
+          gs = 1;
+          break;
+        }
+      }
+    }
+
+    loki_send(4, dmem);
+    loki_send(4, imem);
+  }
+}
+
+// Change all cores caches simultaneously.
+void loki_memory_cache_reconfigure(
+  loki_memory_cache_configuration_t const value
+) {
+  channel_t address;
+
+  loki_memory_reconfigure_setup();
+  loki_memory_reconfigure_send_channels(value);
+
+  // Setup instruction broadcast for later.
+  address = loki_mcast_address(all_cores(8), CH_IPK_FIFO, false);
+  set_channel_map(2, address);
+
+  // Have all other cores execute loki_sleep when done.
+  address = loki_mcast_address(all_cores_except_current(8), CH_REGISTER_3, false);
+  set_channel_map(4, address);
+  loki_send(4, (int)&loki_sleep);
+  address = loki_mcast_address(single_core_bitmask(get_core_id()), CH_REGISTER_3, false);
+  set_channel_map(4, address);
+
+  // Send all the necessary instructions to all cores including this one.
+  // That way no IFetch will be triggered while this code is running.
+  asm volatile (
+    "fetchr 0f\n"
+    "rmtexecute -> 2\n"
+    "sendconfig.eop r0, 0x15 -> 3\n" // Flush all lines.
+    "0:\n" // Since all other cores idle, at this point all banks are flusing.
+    "addui r0, r1, 0f - 0b -> 4\n"
+    "rmtexecute -> 2\n"
+    "setchmapi 1, r3\n" // Data channel.
+    "setchmapi 0, r3\n" // Instruction channel.
+    "nor r0, r0, r0\n"
+    "sendconfig r0, 0x17 -> 3\n" // Invalidate all lines.
+    "fetch.eop r3\n"
+    "0:\n"
+  :
+  :
+  : "memory"
+  );
+}
+
+// Change the directory atomically.
+void loki_memory_directory_reconfigure(
+  loki_memory_directory_configuration_t const value
+) {
+  channel_t address;
+
+  loki_memory_reconfigure_setup();
+  loki_memory_reconfigure_send_directory_entries(value);
+
+  // Setup instruction broadcast for later.
+  address = loki_mcast_address(all_cores(8), CH_IPK_FIFO, false);
+  set_channel_map(2, address);
+
+  // Have all other cores execute loki_sleep when done.
+  address = loki_mcast_address(all_cores_except_current(8), CH_REGISTER_3, false);
+  set_channel_map(4, address);
+  loki_send(4, (int)&loki_sleep);
+  address = loki_mcast_address(single_core_bitmask(get_core_id()), CH_REGISTER_3, false);
+  set_channel_map(4, address);
+
+  // Send all the necessary instructions to all cores including this one.
+  // That way no IFetch will be triggered while this code is running.
+  //
+  // This is a rather subtle little sequence - be careful when modifying!
+  asm volatile (
+    "fetchr.eop 0f\n"
+    ".p2align 5\n"
+    /* cache line boundary */
+    "0:\n"
+    "fetchr 0f\n"
+    "rmtexecute -> 2\n"
+    "sendconfig r0, 0x15 -> 3\n" // Flush all lines.
+    "sendconfig.eop r0, 0x81 -> 3\n" // Ping.
+    "0:\n"
+    "or r0, r4, r0\n" // Wait. Deadlock free because in same cache line as ping.
+    "or r0, r4, r0\n" // Wait.
+    "or r0, r4, r0\n" // Wait.
+    "or r0, r4, r0\n" // Wait.
+    /* cache line boundary */
+    "nor r0, r0, r0\n"
+    "addui r0, r1, 0f - 0b -> 4\n"
+    "or r0, r4, r0\n" // Wait.
+    "or r0, r4, r0\n" // Wait.
+    "or r0, r4, r0\n" // Wait.
+    "or r0, r4, r0\n" // Wait.
+    "sendconfig r0, 0x1c -> 3\n" // Directory mask. Fetch to next line beats this.
+    "sendconfig %0, 0x1f -> 3\n" // Directory mask.
+    /* cache line boundary */
+    "rmtexecute -> 2\n"
+    "sendconfig r0, 0x17 -> 3\n" // Invalidate all lines.
+    "sendconfig r5, 0x1a -> 3\n" // Directory entry.
+    "sendconfig r5, 0x1f -> 3\n" // Directory entry.
+    "sendconfig r5, 0x1a -> 3\n" // Directory entry.
+    "sendconfig r5, 0x1f -> 3\n" // Directory entry.
+    "fetch.eop r3\n"
+    "0:\n"
+  :
+  : "r"(value.mask_index)
+  : "memory"
+  );
+}
+
+// Change both caches and directory simultaneously atomically.
+void loki_memory_tile_reconfigure(
+  loki_memory_cache_configuration_t const cache
+, loki_memory_directory_configuration_t const directory
+) {
+  channel_t address;
+
+  loki_memory_reconfigure_setup();
+  loki_memory_reconfigure_send_directory_entries(directory);
+  loki_memory_reconfigure_send_channels(cache);
+
+  // Setup instruction broadcast for later.
+  address = loki_mcast_address(all_cores(8), CH_IPK_FIFO, false);
+  set_channel_map(2, address);
+
+  // Have all other cores execute loki_sleep when done.
+  address = loki_mcast_address(all_cores_except_current(8), CH_REGISTER_3, false);
+  set_channel_map(4, address);
+  loki_send(4, (int)&loki_sleep);
+  address = loki_mcast_address(single_core_bitmask(get_core_id()), CH_REGISTER_3, false);
+  set_channel_map(4, address);
+
+  // Send all the necessary instructions to all cores including this one.
+  // That way no IFetch will be triggered while this code is running.
+  //
+  // This is a rather subtle little sequence - be careful when modifying!
+  asm volatile (
+    "fetchr.eop 0f\n"
+    ".p2align 5\n"
+    /* cache line boundary */
+    ".fill 7, 4, 0\n\n\n\n\n"
+    "0:\n"
+    "fetchr 0f\n"
+    /* cache line boundary */
+    "rmtexecute -> 2\n"
+    "sendconfig r0, 0x15 -> 3\n" // Flush all lines.
+    "sendconfig r0, 0x81 -> 3\n" // Ping.
+    "setchmapi.eop 1, r3\n" // Data channel.
+    "0:\n"
+    "or r0, r4, r0\n" // Wait. Deadlock free because in same cache line as ping.
+    "or r0, r4, r0\n" // Wait.
+    "or r0, r4, r0\n" // Wait.
+    "or r0, r4, r0\n" // Wait.
+    /* cache line boundary */
+    "nor r0, r0, r0\n"
+    "addui r0, r1, 0f - 0b -> 4\n"
+    "or r0, r4, r0\n" // Wait.
+    "or r0, r4, r0\n" // Wait.
+    "or r0, r4, r0\n" // Wait.
+    "or r0, r4, r0\n" // Wait.
+    "sendconfig r0, 0x1c -> 3\n" // Directory mask. Fetch to next line beats this.
+    "sendconfig %0, 0x1f -> 3\n" // Directory mask.
+    /* cache line boundary */
+    "rmtexecute -> 2\n"
+    "sendconfig r0, 0x17 -> 3\n" // Invalidate all lines.
+    "sendconfig r5, 0x1a -> 3\n" // Directory entry.
+    "sendconfig r5, 0x1f -> 3\n" // Directory entry.
+    "sendconfig r5, 0x1a -> 3\n" // Directory entry.
+    "sendconfig r5, 0x1f -> 3\n" // Directory entry.
+    "setchmapi 0, r3\n" // Instruction channel.
+    "fetch.eop r3\n" // FIXME: Uses old channel 0 :(
+    "0:\n"
+  :
+  : "r"(directory.mask_index)
+  : "memory"
+  );
+}
+
+
 // Get a core to execute a function. The remote core must already have all of
 // the necessary function arguments in the appropriate registers.
 void loki_remote_execute(void (*func)(void), core_id_t core) {
