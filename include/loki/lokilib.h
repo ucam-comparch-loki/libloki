@@ -34,6 +34,7 @@
 #include <loki/control_registers.h>
 #include <loki/memory.h>
 #include <loki/syscall.h>
+#include <loki/vector.h>
 
 //============================================================================//
 // Execution patterns
