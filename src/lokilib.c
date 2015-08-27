@@ -688,10 +688,10 @@ static void distribute_to_local_tile(const struct distributed_func_internal *int
 // Make a copy of the configuration struct in this tile, as it is awkward/
 // impossible to share it via memory.
 static void receive_config() {
-  struct distributed_func_internal* internal = malloc(sizeof(struct distributed_func_internal));
-  distributed_func *config = malloc(sizeof(distributed_func));
+  struct distributed_func_internal* internal = 
+      (struct distributed_func_internal*)loki_receive(3);
+  distributed_func *config = (distributed_func*)loki_receive(3);
   internal->config = config;
-  //config = loki_receive(3);
   void* val;
   val = (void *)loki_receive(3);
   config->cores = (int)val;
@@ -699,12 +699,10 @@ static void receive_config() {
   config->func = val;
   val = (void *)loki_receive(3);
   config->data_size = (size_t)val;
-  void *data = malloc((size_t)val);
-  config->data = data;
-  //val = (void *)loki_receive(3);
-  //config->data = val;
+  val = (void *)loki_receive(3);
+  config->data = val;
 
-  loki_receive_data(data, config->data_size, 3);
+  loki_receive_data(config->data, config->data_size, 3);
 
   internal->first_tile = loki_receive(3);
 
@@ -735,11 +733,12 @@ static void distribute_to_remote_tile(tile_id_t tile, struct distributed_func_in
     // No clobbers because this is all executed remotely.
   );
 
-  //loki_send(3, malloc(sizeof(distributed_func)));
+  loki_send(3, (int)malloc(sizeof(struct distributed_func_internal)));
+  loki_send(3, (int)malloc(sizeof(distributed_func)));
   loki_send(3, config->cores);
   loki_send(3, (int)config->func);
   loki_send(3, config->data_size);
-  //loki_send(3, malloc(config->data_size));
+  loki_send(3, (int)malloc(config->data_size));
 
   loki_send_data(config->data, config->data_size, 3);
 
