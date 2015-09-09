@@ -2,9 +2,6 @@
 #include <assert.h>
 #include <stdlib.h>
 
-#define DEFAULT_CREDIT_COUNT 4
-#define INFINITE_CREDIT_COUNT 63
-
 //============================================================================//
 // Shared
 //

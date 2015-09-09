@@ -7,8 +7,43 @@
 #include <loki/control_registers.h>
 #include <loki/types.h>
 
+//! Default amount of credits a channel receives in Loki. This value is deadlock
+//! safe for arbitrary communication flows.
+#define          DEFAULT_CREDIT_COUNT  4
+//! Default amount of credits for a connection to the instruction FIFO. This
+//! value is deadlock safe for arbitrary connection flows.
+#define DEFAULT_IPK_FIFO_CREDIT_COUNT  8
+//! Special infinite credit value.
+#define         INFINITE_CREDIT_COUNT 63
+
+//! Returns the default (deadlock safe) credit count amount for a connection to
+//! a particular destination channel.
+static inline unsigned int loki_default_credit_count(
+    enum Channels const channel
+) {
+  switch (channel) {
+  case CH_IPK_FIFO:  return DEFAULT_IPK_FIFO_CREDIT_COUNT;
+  case CH_IPK_CACHE:  return DEFAULT_CREDIT_COUNT;
+  case CH_REGISTER_2: return DEFAULT_CREDIT_COUNT;
+  case CH_REGISTER_3: return DEFAULT_CREDIT_COUNT;
+  case CH_REGISTER_4: return DEFAULT_CREDIT_COUNT;
+  case CH_REGISTER_5: return DEFAULT_CREDIT_COUNT;
+  case CH_REGISTER_6: return DEFAULT_CREDIT_COUNT;
+  case CH_REGISTER_7: return DEFAULT_CREDIT_COUNT;
+  default: assert(0); __builtin_unreachable();
+  }
+}
+
 //! Communications channel address type.
 typedef unsigned long channel_t;
+
+//! Returns the default (deadlock safe) credit count amount for a connection to
+//! a particular destination channel.
+static inline unsigned int loki_channel_default_credit_count(
+    channel_t const channel
+) {
+  return loki_default_credit_count((enum Channels)((channel >> 2) & 7));
+}
 
 //! Encode a tile's position from its coordinates.
 static inline tile_id_t tile_id(const unsigned int x, const unsigned int y) {
@@ -161,7 +196,7 @@ static inline channel_t loki_core_address_ex(
         get_unique_core_id_tile(core)
       , get_unique_core_id_core(core)
       , channel
-      , 63
+      , INFINITE_CREDIT_COUNT
       );
 }
 
@@ -183,5 +218,105 @@ static inline enum MulticastDestinations all_cores_except_current(uint num_cores
 
 #include <loki/channel_io.h>
 #include <loki/channel_map_table.h>
+
+//! \brief Test if an asynchronous connection has completed.
+//! \param id The channel that is connecting.
+//! \returns Whether or not the channel is now connected.
+//!
+//! This method polls a channel end to see if it has connected. A connection
+//! attempt should have already been started with \ref loki_connect_async. When
+//! this method returns true, the connection is completed and the channel can be
+//! safely used.
+static inline bool loki_connect_async_poll(int const id) {
+  // woche would block, defeating the point of the poll.
+  channel_t const c = get_channel_map(id);
+
+  // Check the credit count - have we got them all back?
+  if (c >> 14 == loki_channel_default_credit_count(c)) {
+    if (c & 0x2) {
+      // Acquired bit is set - we're ready to go.
+      return true;
+    } else {
+      loki_channel_acquire(id);
+      return false;
+    }
+  } else {
+    // Last attempt has not yet returned.
+    return false;
+  }
+}
+
+//! \brief Begins an asynchronous connection operation.
+//! \param id The channel to connect.
+//! \param tile The remote tile to connect to.
+//! \param core The core on the tile to connect to.
+//! \param channel The destination channel to connect to.
+//!
+//! This method overwrites the channel map table entry specified by id, and then
+//! begins a connection procedure to that channel. The status of this connection
+//! operation can be checked with \ref loki_connect_async_poll. Alternatively, a
+//! core can sleep until the connection is completed with
+//! \ref loki_connect_async_wait. A synchronous version of this operation is
+//! available \ref loki_connect.
+//!
+//! \remark In order to ensure deadlock freedom, the credit count is set to
+//! \ref loki_default_credit_count(channel) for the connection.
+static inline void loki_connect_async(
+    int const id
+  , tile_id_t const tile
+  , enum Cores const core
+  , enum Channels const channel
+) {
+  channel_t const c =
+    loki_core_address(tile, core, channel, loki_default_credit_count(channel));
+
+  set_channel_map(id, c);
+
+  loki_connect_async_poll(id);
+}
+
+//! \brief Wait for the end of an asynchronous connection operation.
+//! \param id The channel to wait for.
+//!
+//! Sleeps the core until the asynchronous connection operation on the specified
+//! channel is completed.
+static inline void loki_connect_async_wait(int const id) {
+  while (!loki_connect_async_poll(id)) {
+    loki_channel_wait_empty(id);
+  }
+}
+
+//! \brief Connects to the specified destination.
+//! \param id The channel to connect.
+//! \param tile The remote tile to connect to.
+//! \param core The core on the tile to connect to.
+//! \param channel The destination channel to connect to.
+//!
+//! This method overwrites the channel map table entry specified by id, and then
+//! performs a connection procedure to that channel. An asynchronous version of
+//! this operation is available \ref loki_connect_async.
+//!
+//! \remark In order to ensure deadlock freedom, the credit count is set to
+//! \ref DEFAULT_CREDIT_COUNT for the connection.
+static inline void loki_connect(
+    int const id
+  , tile_id_t const tile
+  , enum Cores const core
+  , enum Channels const channel
+) {
+  loki_connect_async(id, tile, core, channel);
+  loki_connect_async_wait(id);
+}
+
+//! \brief Disconnects the specified channel.
+//! \param id The channel to disconnect.
+//!
+//! This operation releases the specified channel, allowing another core to
+//! connect to it. It first blocks until the channel is empty, in order to
+//! ensure that no credits are outstanding.
+static inline void loki_disconnect(int const id) {
+  loki_channel_wait_empty(id);
+  loki_channel_release(id);
+}
 
 #endif

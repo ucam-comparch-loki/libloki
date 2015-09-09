@@ -5,7 +5,9 @@
 #define LOKI_CHANNEL_IO_H_
 
 #include <assert.h>
+#include <loki/channel_map_table.h>
 #include <loki/channels.h>
+#include <loki/control_registers.h>
 #include <loki/types.h>
 #include <string.h>
 
@@ -1174,5 +1176,155 @@ static inline void loki_channel_update_directory_mask(
   default: assert(0); return;
   }
 }
+
+//! \brief Send a channel acquire operation on a given output channel.
+//! \param id The chanel to send on.
+//! \param message The payload of the message.
+static inline void loki_channel_acquire_ex(
+    int const channel
+  , unsigned int const message
+) {
+  switch (channel) {
+  case 0: SENDCONFIG(message, 0x3, 0); return;
+  case 1: SENDCONFIG(message, 0x3, 1); return;
+  case 2: SENDCONFIG(message, 0x3, 2); return;
+  case 3: SENDCONFIG(message, 0x3, 3); return;
+  case 4: SENDCONFIG(message, 0x3, 4); return;
+  case 5: SENDCONFIG(message, 0x3, 5); return;
+  case 6: SENDCONFIG(message, 0x3, 6); return;
+  case 7: SENDCONFIG(message, 0x3, 7); return;
+  case 8: SENDCONFIG(message, 0x3, 8); return;
+  case 9: SENDCONFIG(message, 0x3, 9); return;
+  case 10: SENDCONFIG(message, 0x3, 10); return;
+  case 11: SENDCONFIG(message, 0x3, 11); return;
+  case 12: SENDCONFIG(message, 0x3, 12); return;
+  case 13: SENDCONFIG(message, 0x3, 13); return;
+  case 14: SENDCONFIG(message, 0x3, 14); return;
+  default: assert(0); __builtin_unreachable();
+  }
+}
+
+//! \brief Send a channel aquisition message on the specified channel.
+//! \param output must be an integer constant.
+//!
+//! Use functions instead of this macro where possible.
+#define CHANNEL_ACQUIRE(output) {\
+  register int temp;\
+  asm volatile (\
+    "fetchr 0f\n"\
+    "cregrdi %0, 1\n"\
+    "lui %0, %1\n"\
+    "sendconfig.eop %0, 0x3 -> %1\n0:\n"\
+    : "+r"(temp)\
+    : "n"(output)\
+  );\
+}
+
+//! \brief Send a channel acquire operation on a given output channel.
+//! \param id The chanel to send on.
+static inline void loki_channel_acquire(int const channel) {
+  switch (channel) {
+  case 0: CHANNEL_ACQUIRE(0); return;
+  case 1: CHANNEL_ACQUIRE(1); return;
+  case 2: CHANNEL_ACQUIRE(2); return;
+  case 3: CHANNEL_ACQUIRE(3); return;
+  case 4: CHANNEL_ACQUIRE(4); return;
+  case 5: CHANNEL_ACQUIRE(5); return;
+  case 6: CHANNEL_ACQUIRE(6); return;
+  case 7: CHANNEL_ACQUIRE(7); return;
+  case 8: CHANNEL_ACQUIRE(8); return;
+  case 9: CHANNEL_ACQUIRE(9); return;
+  case 10: CHANNEL_ACQUIRE(10); return;
+  case 11: CHANNEL_ACQUIRE(11); return;
+  case 12: CHANNEL_ACQUIRE(12); return;
+  case 13: CHANNEL_ACQUIRE(13); return;
+  case 14: CHANNEL_ACQUIRE(14); return;
+  default: assert(0); __builtin_unreachable();
+  }
+}
+
+//! Send a channel release operation on a given output channel.
+static inline void loki_channel_release(int const channel) {
+  switch (channel) {
+  case 0: SENDCONFIG(0, 0x7, 0); return;
+  case 1: SENDCONFIG(0, 0x7, 1); return;
+  case 2: SENDCONFIG(0, 0x7, 2); return;
+  case 3: SENDCONFIG(0, 0x7, 3); return;
+  case 4: SENDCONFIG(0, 0x7, 4); return;
+  case 5: SENDCONFIG(0, 0x7, 5); return;
+  case 6: SENDCONFIG(0, 0x7, 6); return;
+  case 7: SENDCONFIG(0, 0x7, 7); return;
+  case 8: SENDCONFIG(0, 0x7, 8); return;
+  case 9: SENDCONFIG(0, 0x7, 9); return;
+  case 10: SENDCONFIG(0, 0x7, 10); return;
+  case 11: SENDCONFIG(0, 0x7, 11); return;
+  case 12: SENDCONFIG(0, 0x7, 12); return;
+  case 13: SENDCONFIG(0, 0x7, 13); return;
+  case 14: SENDCONFIG(0, 0x7, 14); return;
+  default: assert(0); __builtin_unreachable();
+  }
+}
+
+//! \brief Wait on channel emptiness, a specified number of credits on a channel.
+//! \param emptiness number of credits to wait for. Must be an integer constant.
+//! \param output must be an integer constant.
+//!
+//! Use functions instead of this macro where possible.
+#define WOCHE(emptiness, output) {\
+  asm (\
+    "fetchr 0f\n"\
+    "woche.eop %0 -> %1\n0:\n"\
+    :\
+    : "n" (emptiness), "n"(output)\
+    : "memory"\
+  );\
+}
+
+//! Wait for the default number of credtis to return to the specified channel.
+static inline void loki_channel_wait_empty(int const channel) {
+  switch (loki_channel_default_credit_count(get_channel_map(channel))) {
+  case DEFAULT_CREDIT_COUNT:
+    switch (channel) {
+    case 0: WOCHE(DEFAULT_CREDIT_COUNT, 0); return;
+    case 1: WOCHE(DEFAULT_CREDIT_COUNT, 1); return;
+    case 2: WOCHE(DEFAULT_CREDIT_COUNT, 2); return;
+    case 3: WOCHE(DEFAULT_CREDIT_COUNT, 3); return;
+    case 4: WOCHE(DEFAULT_CREDIT_COUNT, 4); return;
+    case 5: WOCHE(DEFAULT_CREDIT_COUNT, 5); return;
+    case 6: WOCHE(DEFAULT_CREDIT_COUNT, 6); return;
+    case 7: WOCHE(DEFAULT_CREDIT_COUNT, 7); return;
+    case 8: WOCHE(DEFAULT_CREDIT_COUNT, 8); return;
+    case 9: WOCHE(DEFAULT_CREDIT_COUNT, 9); return;
+    case 10: WOCHE(DEFAULT_CREDIT_COUNT, 10); return;
+    case 11: WOCHE(DEFAULT_CREDIT_COUNT, 11); return;
+    case 12: WOCHE(DEFAULT_CREDIT_COUNT, 12); return;
+    case 13: WOCHE(DEFAULT_CREDIT_COUNT, 13); return;
+    case 14: WOCHE(DEFAULT_CREDIT_COUNT, 14); return;
+    default: assert(0); __builtin_unreachable();
+    }
+  case DEFAULT_IPK_FIFO_CREDIT_COUNT:
+    switch (channel) {
+    case 0: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 0); return;
+    case 1: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 1); return;
+    case 2: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 2); return;
+    case 3: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 3); return;
+    case 4: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 4); return;
+    case 5: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 5); return;
+    case 6: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 6); return;
+    case 7: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 7); return;
+    case 8: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 8); return;
+    case 9: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 9); return;
+    case 10: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 10); return;
+    case 11: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 11); return;
+    case 12: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 12); return;
+    case 13: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 13); return;
+    case 14: WOCHE(DEFAULT_IPK_FIFO_CREDIT_COUNT, 14); return;
+    default: assert(0); __builtin_unreachable();
+    }
+  default: assert(0); __builtin_unreachable();
+  }
+}
+
+
 
 #endif
