@@ -1,12 +1,15 @@
 /*! \file channel_io.h
  * \brief Functions to send and receive messages on channels. */
 
+// We have an unfortunate circular dependncy between headers, so this include
+// must be outside the include guard.
+#include <loki/channels.h>
+
 #ifndef LOKI_CHANNEL_IO_H_
 #define LOKI_CHANNEL_IO_H_
 
 #include <assert.h>
 #include <loki/channel_map_table.h>
-#include <loki/channels.h>
 #include <loki/control_registers.h>
 #include <loki/types.h>
 #include <string.h>
