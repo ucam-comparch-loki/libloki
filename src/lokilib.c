@@ -705,7 +705,7 @@ static void receive_config() {
   val = (void *)loki_receive(3);
   config->data = val;
 
-  loki_receive_data(config->data, config->data_size, 3);
+  loki_receive_data((void *)val, config->data_size, 3);
 
   internal->first_tile = loki_receive(3);
 
