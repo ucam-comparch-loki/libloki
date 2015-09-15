@@ -24,7 +24,7 @@ typedef struct loki_memory_directory_entry {
 //! Full contents of the MHL directory.
 typedef struct loki_memory_directory_configuration {
 	//! Next level table.
-	loki_memory_directory_entry_t entries[LOKI_MEMORY_DIRECTORY_SIZE_LOG2];
+	loki_memory_directory_entry_t entries[LOKI_MEMORY_DIRECTORY_SIZE];
 	//! Bits to use for mask. Between `0` and `32 - LOKI_MEMORY_DIRECTORY_SIZE_LOG2`.
 	unsigned char mask_index;
 } loki_memory_directory_configuration_t;
@@ -238,7 +238,7 @@ static loki_memory_cache_configuration_t const loki_memory_cache_configuration_i
 };
 
 //! Memory configuration for a private L1 cache for each core.
-static loki_memory_cache_configuration_t const loki_memory_cache_configuration_p1id1 = {
+static loki_memory_cache_configuration_t const loki_memory_cache_configuration_pid1 = {
 	  .banks = {
 		  { .icache = MULTICAST_CORE_0, .dcache = MULTICAST_CORE_0 }
 		, { .icache = MULTICAST_CORE_1, .dcache = MULTICAST_CORE_1 }
@@ -248,6 +248,44 @@ static loki_memory_cache_configuration_t const loki_memory_cache_configuration_p
 		, { .icache = MULTICAST_CORE_5, .dcache = MULTICAST_CORE_5 }
 		, { .icache = MULTICAST_CORE_6, .dcache = MULTICAST_CORE_6 }
 		, { .icache = MULTICAST_CORE_7, .dcache = MULTICAST_CORE_7 }
+	  }
+	, .icache_skip_l1 = MULTICAST_CORE_NONE
+	, .dcache_skip_l1 = MULTICAST_CORE_NONE
+	, .icache_skip_l2 = MULTICAST_CORE_NONE
+	, .dcache_skip_l2 = MULTICAST_CORE_NONE
+};
+
+//! Memory configuration for private L1 instruction cache for pairs of cores,
+//! with a shared L1 data cache of 4 banks.
+static loki_memory_cache_configuration_t const loki_memory_cache_configuration_p2i1d4 = {
+	  .banks = {
+		  { .icache = MULTICAST_CORE_01, .dcache = MULTICAST_CORE_NONE }
+		, { .icache = MULTICAST_CORE_23, .dcache = MULTICAST_CORE_NONE }
+		, { .icache = MULTICAST_CORE_45, .dcache = MULTICAST_CORE_NONE }
+		, { .icache = MULTICAST_CORE_67, .dcache = MULTICAST_CORE_NONE }
+		, { .icache = MULTICAST_CORE_NONE, .dcache = MULTICAST_CORE_ALL }
+		, { .icache = MULTICAST_CORE_NONE, .dcache = MULTICAST_CORE_ALL }
+		, { .icache = MULTICAST_CORE_NONE, .dcache = MULTICAST_CORE_ALL }
+		, { .icache = MULTICAST_CORE_NONE, .dcache = MULTICAST_CORE_ALL }
+	  }
+	, .icache_skip_l1 = MULTICAST_CORE_NONE
+	, .dcache_skip_l1 = MULTICAST_CORE_NONE
+	, .icache_skip_l2 = MULTICAST_CORE_NONE
+	, .dcache_skip_l2 = MULTICAST_CORE_NONE
+};
+
+//! Memory configuration for private L1 instruction cache for each core,
+//! overlapping a shared L1 data cache.
+static loki_memory_cache_configuration_t const loki_memory_cache_configuration_pi1od8 = {
+	  .banks = {
+		  { .icache = MULTICAST_CORE_0, .dcache = MULTICAST_CORE_ALL }
+		, { .icache = MULTICAST_CORE_1, .dcache = MULTICAST_CORE_ALL }
+		, { .icache = MULTICAST_CORE_2, .dcache = MULTICAST_CORE_ALL }
+		, { .icache = MULTICAST_CORE_3, .dcache = MULTICAST_CORE_ALL }
+		, { .icache = MULTICAST_CORE_4, .dcache = MULTICAST_CORE_ALL }
+		, { .icache = MULTICAST_CORE_5, .dcache = MULTICAST_CORE_ALL }
+		, { .icache = MULTICAST_CORE_6, .dcache = MULTICAST_CORE_ALL }
+		, { .icache = MULTICAST_CORE_7, .dcache = MULTICAST_CORE_ALL }
 	  }
 	, .icache_skip_l1 = MULTICAST_CORE_NONE
 	, .dcache_skip_l1 = MULTICAST_CORE_NONE

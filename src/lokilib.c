@@ -193,7 +193,7 @@ static void loki_memory_reconfigure_setup_task(enum Cores core) {
     loki_cache_address(
       (enum Memories)get_core_id()
     , core
-    , CH_REGISTER_4
+    , get_core_id() & 1 ? CH_REGISTER_6 : CH_REGISTER_4
     , GROUPSIZE_1
     );
   set_channel_map(3, channel);
@@ -331,14 +331,25 @@ void loki_memory_cache_reconfigure(
   address = loki_mcast_address(single_core_bitmask(get_core_id()), CH_REGISTER_3, false);
   set_channel_map(4, address);
 
+  int t0;
+
   // Send all the necessary instructions to all cores including this one.
   // That way no IFetch will be triggered while this code is running.
   asm volatile (
     "fetchr 0f\n"
     "rmtexecute -> 2\n"
-    "sendconfig.eop r0, 0x15 -> 3\n" // Flush all lines.
+    "sendconfig r0, 0x15 -> 3\n" // Flush all lines.
+    "cregrdi %0, 1\n"
+    "andi.p r0, %0, 1\n"
+    "if!p?sendconfig r0, 0x881 -> 3\n" // Ping.
+    "ifp?sendconfig  r0, 0xc81 -> 3\n" // Ping.
+    "nor.eop r0, r0, r0\n"
     "0:\n" // Since all other cores idle, at this point all banks are flusing.
     "addui r0, r1, 0f - 0b -> 4\n"
+    "or r0, r4, r6\n" // Wait.
+    "or r0, r4, r6\n" // Wait.
+    "or r0, r4, r6\n" // Wait.
+    "or r0, r4, r6\n" // Wait.
     "rmtexecute -> 2\n"
     "setchmapi 1, r3\n" // Data channel.
     "setchmapi 0, r3\n" // Instruction channel.
@@ -346,7 +357,7 @@ void loki_memory_cache_reconfigure(
     "sendconfig r0, 0x17 -> 3\n" // Invalidate all lines.
     "fetch.eop r3\n"
     "0:\n"
-  :
+  : "=&r"(t0)
   :
   : "memory"
   );
@@ -372,33 +383,32 @@ void loki_memory_directory_reconfigure(
   address = loki_mcast_address(single_core_bitmask(get_core_id()), CH_REGISTER_3, false);
   set_channel_map(4, address);
 
+  int t0;
+
   // Send all the necessary instructions to all cores including this one.
   // That way no IFetch will be triggered while this code is running.
   //
   // This is a rather subtle little sequence - be careful when modifying!
   asm volatile (
-    "fetchr.eop 0f\n"
-    ".p2align 5\n"
-    /* cache line boundary */
-    "0:\n"
     "fetchr 0f\n"
     "rmtexecute -> 2\n"
     "sendconfig r0, 0x15 -> 3\n" // Flush all lines.
-    "sendconfig.eop r0, 0x81 -> 3\n" // Ping.
-    "0:\n"
-    "or r0, r4, r0\n" // Wait. Deadlock free because in same cache line as ping.
-    "or r0, r4, r0\n" // Wait.
-    "or r0, r4, r0\n" // Wait.
-    "or r0, r4, r0\n" // Wait.
+    "cregrdi %0, 1\n"
+    "andi.p r0, %0, 1\n"
+    "if!p?sendconfig r0, 0x881 -> 3\n" // Ping.
+    "ifp?sendconfig  r0, 0xc81 -> 3\n" // Ping.
+    "nor.eop r0, r0, r0\n"
+    ".p2align 5\n"
     /* cache line boundary */
-    "nor r0, r0, r0\n"
+    ".fill 0x1, 4, 0\n"
+    "0:\n"
     "addui r0, r1, 0f - 0b -> 4\n"
-    "or r0, r4, r0\n" // Wait.
-    "or r0, r4, r0\n" // Wait.
-    "or r0, r4, r0\n" // Wait.
-    "or r0, r4, r0\n" // Wait.
+    "or r0, r4, r6\n" // Wait.
+    "or r0, r4, r6\n" // Wait.
+    "or r0, r4, r6\n" // Wait.
+    "or r0, r4, r6\n" // Wait.
     "sendconfig r0, 0x1c -> 3\n" // Directory mask. Fetch to next line beats this.
-    "sendconfig %0, 0x1f -> 3\n" // Directory mask.
+    "sendconfig %1, 0x1f -> 3\n" // Directory mask.
     /* cache line boundary */
     "rmtexecute -> 2\n"
     "sendconfig r0, 0x17 -> 3\n" // Invalidate all lines.
@@ -408,7 +418,7 @@ void loki_memory_directory_reconfigure(
     "sendconfig r5, 0x1f -> 3\n" // Directory entry.
     "fetch.eop r3\n"
     "0:\n"
-  :
+  : "=&r"(t0)
   : "r"(value.mask_index)
   : "memory"
   );
@@ -436,36 +446,32 @@ void loki_memory_tile_reconfigure(
   address = loki_mcast_address(single_core_bitmask(get_core_id()), CH_REGISTER_3, false);
   set_channel_map(4, address);
 
+  int t0;
+
   // Send all the necessary instructions to all cores including this one.
   // That way no IFetch will be triggered while this code is running.
   //
   // This is a rather subtle little sequence - be careful when modifying!
   asm volatile (
-    "fetchr.eop 0f\n"
-    ".p2align 5\n"
-    /* cache line boundary */
-    ".fill 7, 4, 0\n\n\n\n\n"
-    "0:\n"
     "fetchr 0f\n"
-    /* cache line boundary */
     "rmtexecute -> 2\n"
     "sendconfig r0, 0x15 -> 3\n" // Flush all lines.
-    "sendconfig r0, 0x81 -> 3\n" // Ping.
+    "cregrdi %0, 1\n"
+    "andi.p r0, %0, 1\n"
+    "if!p?sendconfig r0, 0x881 -> 3\n" // Ping.
+    "ifp?sendconfig  r0, 0xc81 -> 3\n" // Ping.
     "setchmapi.eop 1, r3\n" // Data channel.
-    "0:\n"
-    "or r0, r4, r0\n" // Wait. Deadlock free because in same cache line as ping.
-    "or r0, r4, r0\n" // Wait.
-    "or r0, r4, r0\n" // Wait.
-    "or r0, r4, r0\n" // Wait.
+    ".p2align 5\n"
     /* cache line boundary */
-    "nor r0, r0, r0\n"
+    ".fill 0x1, 4, 0\n"
+    "0:\n"
     "addui r0, r1, 0f - 0b -> 4\n"
-    "or r0, r4, r0\n" // Wait.
-    "or r0, r4, r0\n" // Wait.
-    "or r0, r4, r0\n" // Wait.
-    "or r0, r4, r0\n" // Wait.
+    "or r0, r4, r6\n" // Wait.
+    "or r0, r4, r6\n" // Wait.
+    "or r0, r4, r6\n" // Wait.
+    "or r0, r4, r6\n" // Wait.
     "sendconfig r0, 0x1c -> 3\n" // Directory mask. Fetch to next line beats this.
-    "sendconfig %0, 0x1f -> 3\n" // Directory mask.
+    "sendconfig %1, 0x1f -> 3\n" // Directory mask.
     /* cache line boundary */
     "rmtexecute -> 2\n"
     "sendconfig r0, 0x17 -> 3\n" // Invalidate all lines.
@@ -476,7 +482,7 @@ void loki_memory_tile_reconfigure(
     "setchmapi 0, r3\n" // Instruction channel.
     "fetch.eop r3\n" // FIXME: Uses old channel 0 :(
     "0:\n"
-  :
+  : "=&r"(t0)
   : "r"(directory.mask_index)
   : "memory"
   );
