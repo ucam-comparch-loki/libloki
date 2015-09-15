@@ -161,6 +161,7 @@ static inline unsigned int cores_this_tile(
 }
 
 //! Return a globally unique idenitifer for this core.
+static inline core_id_t get_unique_core_id(void) __attribute__((const));
 static inline core_id_t get_unique_core_id(void) {
   return (core_id_t)get_control_register(CR_CPU_LOCATION);
 }
@@ -201,11 +202,13 @@ static inline channel_t loki_core_address_ex(
 }
 
 //! Return the core's position within its tile.
+static inline enum Cores get_core_id() __attribute__((const));
 static inline enum Cores get_core_id() {
   return get_unique_core_id_core(get_control_register(CR_CPU_LOCATION));
 }
 
 //! Return the ID of the tile the core is in.
+static inline tile_id_t get_tile_id() __attribute__((const));
 static inline tile_id_t get_tile_id() {
   return get_unique_core_id_tile(get_control_register(CR_CPU_LOCATION));
 }
