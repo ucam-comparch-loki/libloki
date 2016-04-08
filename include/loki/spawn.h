@@ -32,7 +32,7 @@ void loki_execute(const distributed_func* config);
 //! This function may only be executed on core 0 of each tile.
 //!
 //! \warning Overwrites channel map table entry 2 and uses `CH_REGISTER_3`.
-void loki_sync_tiles(const uint cores);
+void loki_sync_tiles(const uint tiles);
 
 //! \brief Wait for all cores between 0 and (cores-1) to reach this point before
 //! continuing.
