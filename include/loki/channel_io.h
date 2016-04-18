@@ -649,7 +649,7 @@ static inline void loki_channel_flush_cache_line(
   default: assert(0); return;
   }
 }
-#include <stdio.h>
+
 //! \brief Flush a data structure to the next level of memory hierarchy.
 //!
 //! Flush as many cache lines as are necessary to push the given data to the
