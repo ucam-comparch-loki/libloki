@@ -649,6 +649,35 @@ static inline void loki_channel_flush_cache_line(
   default: assert(0); return;
   }
 }
+#include <stdio.h>
+//! \brief Flush a data structure to the next level of memory hierarchy.
+//!
+//! Flush as many cache lines as are necessary to push the given data to the
+//! next level of the memory hierarchy.
+//!
+//! This implementation also waits until the flush is complete, so is not
+//! suitable for multiple quick flushes in succession.
+static inline void loki_flush_data(
+  const int channel, void const *address, size_t size
+) {
+  char* cacheLine = (char*)((int)address & ~0x1f);
+  char* endData = (char*)address + size;
+  while (cacheLine < endData) {
+    loki_channel_flush_cache_line(channel, cacheLine);
+    cacheLine += 32;
+  }
+  
+  // Load a value from each cache line to ensure that the flush has finished.
+  cacheLine = (char*)((int)address & ~0x1f);  
+  while (cacheLine < endData) {
+    loki_channel_load_word(channel, cacheLine);
+    cacheLine += 32;
+    int tmp = loki_receive(2);
+    
+    // Include some empty code which uses tmp, so it doesn't get optimised away.
+    asm ("" : : "r" (tmp) : "memory");
+  }
+}
 
 //! Send a invalidate cache line memory operation on a given output channel.
 static inline void loki_channel_invalidate_cache_line(

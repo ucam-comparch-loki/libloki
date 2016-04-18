@@ -693,21 +693,6 @@ static void distribute_to_local_tile(const struct distributed_func_internal *int
 static void receive_config() {
   struct distributed_func_internal* internal = 
       (struct distributed_func_internal*)loki_receive(3);
-  distributed_func *config = (distributed_func*)loki_receive(3);
-  internal->config = config;
-  void* val;
-  val = (void *)loki_receive(3);
-  config->cores = (int)val;
-  val = (void *)loki_receive(3);
-  config->func = val;
-  val = (void *)loki_receive(3);
-  config->data_size = (size_t)val;
-  val = (void *)loki_receive(3);
-  config->data = val;
-
-  loki_receive_data((void *)val, config->data_size, 3);
-
-  internal->first_tile = loki_receive(3);
 
   distribute_to_local_tile(internal);
 }
@@ -715,6 +700,11 @@ static void receive_config() {
 // Start cores on another tile.
 static void distribute_to_remote_tile(tile_id_t tile, struct distributed_func_internal const *internal) {
   const distributed_func *config = internal->config;
+
+  // Flush the configuration data so it is accessible to the remote tile.
+  loki_flush_data(1, internal, sizeof(struct distributed_func_internal));
+  loki_flush_data(1, config, sizeof(distributed_func));
+  loki_flush_data(1, config->data, config->data_size);
 
   // Connect to core 0 in the tile.
   channel_t inst_fifo = loki_core_address(tile, 0, 0, INFINITE_CREDIT_COUNT);
@@ -735,36 +725,30 @@ static void distribute_to_remote_tile(tile_id_t tile, struct distributed_func_in
     "0:\n"
     // No clobbers because this is all executed remotely.
   );
-
-  loki_send(3, (int)malloc(sizeof(struct distributed_func_internal)));
-  loki_send(3, (int)malloc(sizeof(distributed_func)));
-  loki_send(3, config->cores);
-  loki_send(3, (int)config->func);
-  loki_send(3, config->data_size);
-  loki_send(3, (int)malloc(config->data_size));
-
-  loki_send_data(config->data, config->data_size, 3);
-
-  loki_send(3, internal->first_tile);
+  
+  loki_send(3, (int)internal);
 }
 
 // The main function to call to execute the same function on many cores.
 void loki_execute(const distributed_func* config) {
-  struct distributed_func_internal internal = {
-      .config = config
-    , .first_tile = get_tile_id()
-  };
+
+  struct distributed_func_internal* internal =
+      malloc(sizeof(struct distributed_func_internal));
+  internal->config = config;
+  internal->first_tile = get_tile_id();
 
   if (config->cores > 1) {
     int tile;
     for (tile = 1; tile*CORES_PER_TILE < config->cores; tile++) {
-      distribute_to_remote_tile(int2tile(tile), &internal);
+      distribute_to_remote_tile(int2tile(tile), internal);
     }
 
-    distribute_to_local_tile(&internal);
+    distribute_to_local_tile(internal);
   }
   else
     config->func(config->data);
+
+  // TODO: free(internal) when we know all cores have finished with it.
 
 }
 
