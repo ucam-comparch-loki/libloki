@@ -16,7 +16,7 @@ static void init_run_config(setup_func func, unsigned int cores) {
 }
 
 // More flexible core initialisation. To be executed by core 0 of any tile.
-static inline void init_local_tile(const init_config* config) {
+static void init_local_tile(const init_config* config) {
 
   uint tile = get_tile_id();
   uint cores = cores_this_tile(config->cores, tile, tile_id(1, 1));
@@ -94,22 +94,18 @@ void receive_init_config() {
 
 static inline void init_remote_tile(const tile_id_t tile, const init_config* config) {
 
-  // Connect to core 0 in the tile.
-  int inst_fifo = loki_core_address(tile, 0, 0, INFINITE_CREDIT_COUNT);
+  // Send initial configuration.
   int data_input = loki_core_address(tile, 0, 3, INFINITE_CREDIT_COUNT);
-  set_channel_map(2, inst_fifo);
-  set_channel_map(3, data_input);
-
-  // Initialise core 0 (stack, memory connections, etc)
-  loki_send(3, config->inst_mem);
-  loki_send(3, config->data_mem);
-  loki_send(3, (int)config->stack_pointer - tile2int(tile)*CORES_PER_TILE*config->stack_size);
-  loki_send(3, (int)&loki_sleep);
+  set_channel_map(2, data_input);
+  loki_send(2, config->inst_mem);
+  loki_send(2, config->data_mem);
+  loki_send(2, (int)config->stack_pointer - tile2int(tile)*CORES_PER_TILE*config->stack_size);
   
-  // Still have to send function pointers, but only have 4 buffer spaces.
-  // Wait until after sending instructions to send more data.
+  // Send some instructions to execute.
+  int inst_fifo = loki_core_address(tile, 0, 0, INFINITE_CREDIT_COUNT);
+  set_channel_map(2, inst_fifo);
 
-  asm (
+  asm volatile (
     "fetchr 0f\n"
     "rmtexecute -> 2\n "        // begin remote execution
     "setchmapi 0, r3\n"         // instruction channel
@@ -117,21 +113,17 @@ static inline void init_remote_tile(const tile_id_t tile, const init_config* con
     "nor r0, r0, r0\n"          // nop after setchmap before channel use
     "or r8, r3, r0\n"           // receive stack pointer
     "or r9, r8, r0\n"           // frame pointer = stack pointer
-    "or r10, r3, r0\n"          // set return address
-    "fetch.eop r3\n"            // fetch receive_init_config
+    "lli r10, %lo(loki_sleep)\n"
+    "lui.eop r10, %hi(loki_sleep)\n"// return address = sleep
     "0:\n"
   );
 
-  loki_send(3, (int)&receive_init_config);
-  
-  init_config* remotePointer = malloc(sizeof(init_config));
-  assert(remotePointer != NULL);
-  loki_send(3, (int)remotePointer);
-  loki_send_data(config, sizeof(init_config), 3);
+  // Have the remote core initialise the rest of its tile.
+  loki_remote_execute(tile, 0, &init_local_tile, (void*)config);
 
 }
 
-inline void loki_init(init_config* config) {
+void loki_init(init_config* config) {
   assert(config->cores > 0);
 
   if (config->stack_pointer == 0) {
@@ -151,6 +143,7 @@ inline void loki_init(init_config* config) {
 
   // Give each core connections to memory and a stack.
   if (config->cores > 1) {
+    loki_flush_data(1, config, sizeof(init_config));
     unsigned int tile;
     for (tile = 1; tile*CORES_PER_TILE < config->cores; tile++) {
       init_remote_tile(int2tile(tile), config);
@@ -162,11 +155,31 @@ inline void loki_init(init_config* config) {
     config->config_func();
 }
 
+// Initialise a particular set of tiles.
+void loki_init_tiles(int num_tiles, tile_id_t* tile_ids, init_config* config) {
+  bool init_self = false;
+
+  for (unsigned int tile = 0; tile < num_tiles; tile++) {
+    if (tile_ids[tile] == get_tile_id()) {
+      init_self = true;
+      continue;
+    }
+    else
+      init_remote_tile(tile_ids[tile], config);
+  }
+  
+  if (init_self)
+    init_local_tile(config);
+    
+  // FIXME: these initialisation functions include a synchronisation, but don't
+  // know which tiles to synchronise.
+}
+
 // A wrapper for loki_init which fills in most of the values with sensible
 // defaults.
 void loki_init_default(const uint cores, const setup_func setup) {
 
-  init_config *config = malloc(sizeof(init_config));
+  init_config *config = loki_malloc(sizeof(init_config));
   config->cores = cores;
   config->stack_pointer = 0;
   config->stack_size = 0x12000;
@@ -176,7 +189,7 @@ void loki_init_default(const uint cores, const setup_func setup) {
 
   loki_init(config);
   
-  free(config);
+  loki_free(config);
 
 }
 
@@ -488,30 +501,6 @@ void loki_memory_tile_reconfigure(
   );
 }
 
-
-// Get a core to execute a function. The remote core must already have all of
-// the necessary function arguments in the appropriate registers.
-void loki_remote_execute(void (*func)(void), core_id_t core) {
-  const channel_t ipk_fifo = loki_core_address_ex(core, 0);
-  const channel_t data_input = loki_core_address_ex(core, 3);
-  set_channel_map(2, ipk_fifo);
-  set_channel_map(3, data_input);
-
-  // Send the function address to the remote core.
-  loki_send(3, (int)func);
-
-  // Tell the remote core to fetch the provided function, and sleep when done.
-  asm (
-    "fetchr 0f\n"
-    "rmtexecute -> 2\n"
-    "lli r10, %%lo(loki_sleep)\n"
-    "lui r10, %%hi(loki_sleep)\n"
-    "fetch.eop r3\n"
-    "0:\n"
-    :::
-  );
-}
-
 // Signal that all required results have been produced by the parallel execution
 // pattern, and that we may now break the cores from their infinite loops.
 void end_parallel_section() {
@@ -564,6 +553,8 @@ void loki_sync_tiles(const uint tiles) {
 void loki_sync_ex(const uint cores, const tile_id_t first_tile) {
   if (cores <= 1)
     return;
+    
+  assert(cores <= 128);
 
   uint core = get_core_id();
   tile_id_t tile = get_tile_id();
@@ -688,15 +679,6 @@ static void distribute_to_local_tile(const struct distributed_func_internal *int
 
 }
 
-// Make a copy of the configuration struct in this tile, as it is awkward/
-// impossible to share it via memory.
-static void receive_config() {
-  struct distributed_func_internal* internal = 
-      (struct distributed_func_internal*)loki_receive(3);
-
-  distribute_to_local_tile(internal);
-}
-
 // Start cores on another tile.
 static void distribute_to_remote_tile(tile_id_t tile, struct distributed_func_internal const *internal) {
   const distributed_func *config = internal->config;
@@ -705,35 +687,16 @@ static void distribute_to_remote_tile(tile_id_t tile, struct distributed_func_in
   loki_flush_data(1, internal, sizeof(struct distributed_func_internal));
   loki_flush_data(1, config, sizeof(distributed_func));
   loki_flush_data(1, config->data, config->data_size);
-
-  // Connect to core 0 in the tile.
-  channel_t inst_fifo = loki_core_address(tile, 0, 0, INFINITE_CREDIT_COUNT);
-  channel_t data_input = loki_core_address(tile, 0, 3, INFINITE_CREDIT_COUNT);
-  set_channel_map(2, inst_fifo);
-  set_channel_map(3, data_input);
-
-  loki_send(3, (int)&loki_sleep);            // send function pointers
-  loki_send(3, (int)&receive_config);
-
-  // Tell core 0 to receive configuration struct before setting up all other
-  // cores on its tile.
-  asm volatile (
-    "fetchr 0f\n"
-    "rmtexecute -> 2\n"         // begin remote execution
-    "addu r10, r3, r0\n"        // set return address
-    "fetch.eop r3\n"            // fetch function to execute
-    "0:\n"
-    // No clobbers because this is all executed remotely.
-  );
   
-  loki_send(3, (int)internal);
+  // Have core 0 of the remote tile share the data with all other cores there.
+  loki_remote_execute(tile, 0, &distribute_to_local_tile, (void*)internal);
 }
 
 // The main function to call to execute the same function on many cores.
 void loki_execute(const distributed_func* config) {
 
   struct distributed_func_internal* internal =
-      malloc(sizeof(struct distributed_func_internal));
+      loki_malloc(sizeof(struct distributed_func_internal));
   internal->config = config;
   internal->first_tile = get_tile_id();
 
@@ -1309,7 +1272,7 @@ void start_dataflow(const dataflow_config* config) {
   // Send each core the function it is to execute.
   int core;
   for (core = 1; core < config->cores; core++)
-    loki_remote_execute(config->core_tasks[core], core);
+    loki_remote_execute(get_tile_id(), core, config->core_tasks[core], NULL);
 
   // Once all other cores have been set up, this core can join in.
   config->core_tasks[0]();
@@ -1332,6 +1295,64 @@ void start_dataflow(const dataflow_config* config) {
     "0:\n"
   );
 
+}
+
+
+//============================================================================//
+// Memory
+//============================================================================//
+
+extern void* __heap_ptr;
+
+void loki_free(void* ptr) {
+  // The standard free does what we want here.
+  free(ptr);
+}
+
+// Round val up to the nearest multiple of the cache line size.
+static inline int loki_round_up_cache_line(int val) {
+  if (val & 0x1F)
+    return (val & ~0x1F) + 32;  // Clear offset, then add a whole line.
+  else
+    return val;
+}
+
+void* loki_malloc(size_t size) {
+  // Round the heap pointer up to the nearest cache line boundary.
+  __heap_ptr = (void*)loki_round_up_cache_line((int)__heap_ptr);
+  
+  // Round up size so we allocate a whole number of cache lines.
+  size_t newSize = loki_round_up_cache_line(size);
+  
+  // Normal malloc.
+  return malloc(newSize);  
+}
+
+void* loki_calloc (size_t num, size_t size) {
+  void* ptr = loki_malloc(num*size);
+  memset(ptr, 0, num*size);
+  return ptr;
+}
+
+void* loki_realloc (void* ptr, size_t size) {
+  if (size == 0) {
+    loki_free(ptr);
+    return NULL;
+  }
+  else {
+    // Would ideally like to avoid allocation if the requested size is less than
+    // the current size, but we don't have the current size.
+    void* newPtr = loki_malloc(size);
+    
+    if (ptr != NULL) {
+      // This is likely to copy too much, but again, we don't know how much data
+      // is in the current allocation.
+      memcpy(newPtr, ptr, size);
+      loki_free(ptr);
+    }
+    
+    return newPtr;
+  }
 }
 
 
@@ -1368,6 +1389,8 @@ void spawn_prep() {
 }
 
 // Execute a function on a remote core, and return its result to a given place.
+// Deprecated: please use loki_spawn which connects to a particular core, and
+// pass the return address as an additional argument.
 void loki_spawn(void* func, const channel_t address, const int argc, ...) {
   // Find a free core and connect to it
   int core = 1;
@@ -1377,7 +1400,7 @@ void loki_spawn(void* func, const channel_t address, const int argc, ...) {
 
   // Tell the remote core to execute a setup function which will allow it to
   // receive all arguments for the main function.
-  loki_remote_execute(&spawn_prep, core);
+  loki_remote_execute(get_tile_id(), core, &spawn_prep, NULL);
 
   const channel_t data_input = loki_core_address_ex(core, 3);
   set_channel_map(3, data_input);
@@ -1397,4 +1420,26 @@ void loki_spawn(void* func, const channel_t address, const int argc, ...) {
 
   va_end(argp);
 
+}
+
+// Execute a function on a given core.
+void loki_remote_execute(tile_id_t tile, core_id_t core, void* func, void* args) {  
+  // Send all necessary information to a data channel.
+  const channel_t data_input = loki_core_address(tile, core, 3, INFINITE_CREDIT_COUNT);
+  set_channel_map(2, data_input);
+  loki_send(2, (int)args);
+  loki_send(2, (int)func);
+  
+  // Tell remote core which code to execute.
+  const channel_t inst_input = loki_core_address(tile, core, 0, INFINITE_CREDIT_COUNT);
+  set_channel_map(2, inst_input);  
+  asm volatile (
+    "fetchr 0f\n"
+    "rmtexecute -> 2\n"           // The rest of this packet executes remotely
+    "lli r10, %lo(loki_sleep)\n"
+    "lui r10, %hi(loki_sleep)\n"  // Set return address
+    "or r13, r3, r0\n"            // Put args pointer into first argument register
+    "fetch.eop r3\n"              // Start executing func
+    "0:\n"
+  );
 }

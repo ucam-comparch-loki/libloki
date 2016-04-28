@@ -703,6 +703,23 @@ static inline void loki_channel_invalidate_cache_line(
   }
 }
 
+//! \brief Invalidate a region of memory, forcing it to be fetched from the next
+//! level of the memory hierarchy next time it is accessed.
+//!
+//! Invalidate as many cache lines as are necessary to capture the whole
+//! requested region. Any other data which happens to share these lines will be
+//! lost.
+static inline void loki_invalidate_data(
+  const int channel, void const *address, size_t size
+) {
+  char* cacheLine = (char*)((int)address & ~0x1f);
+  char* endData = (char*)address + size;
+  while (cacheLine < endData) {
+    loki_channel_invalidate_cache_line(channel, cacheLine);
+    cacheLine += 32;
+  }
+}
+
 //! Send a flush all lines memory operation on a given output channel.
 static inline void loki_channel_flush_all_lines(
   const int channel, void const *address

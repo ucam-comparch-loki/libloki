@@ -73,10 +73,18 @@ void loki_tile_sync(const uint cores);
 //! \warning Overwrites channel map table entries 2 and 3 and uses `CH_REGISTER_3`.
 void loki_spawn(void* func, const channel_t return_address, const int argc, ...);
 
-//! \brief Get a core to execute the instruction packet at the given address.
+//! \brief Execute function on another core.
 //!
-//! \warning Overwrites channel map table entries 2 and 3 and uses `CH_REGISTER_3`.
-void loki_remote_execute(void (*address)(void), core_id_t core);
+//! Assumes that the remote core has already been initialised using `loki_init`.
+//! If spawning on a remote tile, the content of `args` must be flushed first.
+//!
+//! \param tile Tile to execute the function on.
+//! \param core Core on the given tile to execute the function on.
+//! \param func Function to be executed. Must take a single `void*` argument or none at all.
+//! \param args Struct containing all information required by the function.
+//!
+//! \warning Overwrites channel map table entry 2.
+void loki_remote_execute(tile_id_t tile, core_id_t core, void* func, void* args);
 
 //! A core will stop work if it executes this function.
 void loki_sleep(void) __attribute__((__noreturn__));

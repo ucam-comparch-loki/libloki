@@ -29,6 +29,7 @@
 //   unique lower-level features.
 //============================================================================//
 
+#include <loki/alloc.h>
 #include <loki/barrier.h>
 #include <loki/channels.h>
 #include <loki/control_registers.h>
