@@ -84,6 +84,7 @@ void loki_spawn(void* func, const channel_t return_address, const int argc, ...)
 //! \param args Struct containing all information required by the function.
 //!
 //! \warning Overwrites channel map table entry 2.
+//! \warning If spawning on a remote tile, the content of `args` must first be flushed.
 void loki_remote_execute(tile_id_t tile, core_id_t core, void* func, void* args);
 
 //! A core will stop work if it executes this function.
