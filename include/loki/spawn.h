@@ -31,7 +31,7 @@ void loki_execute(const distributed_func* config);
 //!
 //! This function may only be executed on core 0 of each tile.
 //!
-//! \warning Overwrites channel map table entry 2 and uses `CH_REGISTER_3`.
+//! \warning Overwrites channel map table entry 2 and uses `CH_REGISTER_7`.
 void loki_sync_tiles(const uint tiles);
 
 //! \brief Wait for all cores between 0 and (cores-1) to reach this point before
@@ -41,7 +41,7 @@ void loki_sync_tiles(const uint tiles);
 //!
 //! \warning Quite expensive/slow. Use sparingly.
 //!
-//! \warning Overwrites channel map table entry 2 and uses `CH_REGISTER_3`.
+//! \warning Overwrites channel map table entry 2 and uses `CH_REGISTER_3` and `CH_REGISTER_7`.
 void loki_sync_ex(const unsigned int cores, const tile_id_t first_tile);
 
 //! \brief Wait for all cores between 0 and (cores-1) to reach this point before
@@ -50,7 +50,7 @@ void loki_sync_ex(const unsigned int cores, const tile_id_t first_tile);
 //!
 //! \warning Quite expensive/slow. Use sparingly.
 //!
-//! \warning Overwrites channel map table entry 2 and uses `CH_REGISTER_3`.
+//! \warning Overwrites channel map table entry 2 and uses `CH_REGISTER_3` and `CH_REGISTER_7`.
 static inline void loki_sync(const uint cores) {
   loki_sync_ex(cores, tile_id(1, 1));
 }

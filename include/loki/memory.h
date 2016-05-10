@@ -99,6 +99,9 @@ static inline void loki_memory_directory_l1_mask_update(
 //! \warning All other cores on the tile must be idle when this method is run.
 //!
 //! \warning This method does not take L2 caches into consideration.
+//!
+//! \warning Overwrites channel map table entries 2, 3 and 4, and uses `CH_REGISTER_3`,
+//! `CH_REGISTER_4`, `CH_REGISTER_5` and `CH_REGISTER_6`.
 void loki_memory_directory_reconfigure(
 	  loki_memory_directory_configuration_t const value
 );
@@ -143,6 +146,8 @@ typedef struct loki_memory_cache_configuration {
 //! partially between old and new.
 //!
 //! \warning All other cores on the tile must be idle when this method is run.
+//! \warning Overwrites channel map table entries 2, 3 and 4, and uses `CH_REGISTER_3`,
+//! `CH_REGISTER_4`, `CH_REGISTER_5` and `CH_REGISTER_6`.
 void loki_memory_cache_reconfigure(
 	  loki_memory_cache_configuration_t const value
 );

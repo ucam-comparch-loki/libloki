@@ -508,7 +508,7 @@ void end_parallel_section() {
 
   // Current implementation is to send a token to core 0, input 3.
   // wait_end_parallel_section() must therefore execute on core 0.
-  int address = loki_mcast_address(single_core_bitmask(0), 3, false);
+  int address = loki_mcast_address(single_core_bitmask(0), CH_REGISTER_3, false);
   set_channel_map(2, address);
   loki_send_token(2);
 
@@ -527,21 +527,21 @@ void loki_sync_tiles(const uint tiles) {
   // neighbour. (A tree structure would be more efficient, but there isn't much
   // difference with so few tiles.)
   if (tile < tiles-1)
-    loki_receive_token(3);
+    loki_receive_token(CH_REGISTER_7);
 
   // All tiles except the first one send a token to their other neighbour
   // (after setting up a connection).
   if (tile > 0) {
-    int address = loki_core_address(int2tile(tile-1), 0, 3, INFINITE_CREDIT_COUNT);
+    int address = loki_core_address(int2tile(tile-1), 0, CH_REGISTER_7, INFINITE_CREDIT_COUNT);
     set_channel_map(2, address);
     loki_send_token(2);
-    loki_receive_token(3);
+    loki_receive_token(CH_REGISTER_7);
   } else {
     // All tokens have now been received, so notify all tiles.
     assert(tile == 0);
     int destination;
     for (destination = 1; destination < tiles; destination++) {
-      int address = loki_core_address(int2tile(destination), 0, 3, INFINITE_CREDIT_COUNT);
+      int address = loki_core_address(int2tile(destination), 0, CH_REGISTER_7, INFINITE_CREDIT_COUNT);
       set_channel_map(2, address);
       loki_send_token(2);
     }
@@ -565,17 +565,17 @@ void loki_sync_ex(const uint cores, const tile_id_t first_tile) {
   // neighbour. (A tree structure would be more efficient, but there isn't much
   // difference with so few cores.)
   if (core < coresThisTile-1)
-    loki_receive_token(3);
+    loki_receive_token(CH_REGISTER_3);
 
   // All cores except the first one send a token to their other neighbour
   // (after setting up a connection).
   if (core > 0) {
-    int address = loki_mcast_address(single_core_bitmask(core-1), 3, false);
+    int address = loki_mcast_address(single_core_bitmask(core-1), CH_REGISTER_3, false);
     set_channel_map(2, address);
     loki_send_token(2);
     
     // Receive token from core 0, telling us that synchronisation has finished.
-    loki_receive_token(3);
+    loki_receive_token(CH_REGISTER_3);
   } else {
     // All core 0s then synchronise between tiles using the same process.
     assert(core == 0);
@@ -585,7 +585,7 @@ void loki_sync_ex(const uint cores, const tile_id_t first_tile) {
     // All core 0s need to distribute the token throughout their tiles.
     if (coresThisTile > 1) {
       int bitmask = all_cores_except_0(coresThisTile);
-      int address = loki_mcast_address(bitmask, 3, false);
+      int address = loki_mcast_address(bitmask, CH_REGISTER_3, false);
       set_channel_map(2, address);
       loki_send_token(2);
     }
@@ -604,22 +604,22 @@ void loki_tile_sync(const uint cores) {
   // neighbour. (A tree structure would be more efficient, but there isn't much
   // difference with so few cores.)
   if (core < cores-1)
-    loki_receive_token(3);
+    loki_receive_token(CH_REGISTER_3);
 
   // All cores except the first one send a token to their other neighbour
   // (after setting up a connection).
   if (core > 0) {
-    int address = loki_mcast_address(single_core_bitmask(core-1), 3, false);
+    int address = loki_mcast_address(single_core_bitmask(core-1), CH_REGISTER_3, false);
     set_channel_map(2, address);
     loki_send_token(2);
-    loki_receive_token(3);
+    loki_receive_token(CH_REGISTER_3);
   }
 
   // Core 0 notifies all other cores when synchronisation has finished.
   if (core == 0) {
     // All core 0s need to distribute the token throughout their tiles.
     int bitmask = all_cores_except_0(cores);
-    int address = loki_mcast_address(bitmask, 3, false);
+    int address = loki_mcast_address(bitmask, CH_REGISTER_3, false);
     set_channel_map(2, address);
     loki_send_token(2);
   }
@@ -628,7 +628,7 @@ void loki_tile_sync(const uint cores) {
 // Wait until the end_parallel_section function has been called. This must be
 // executed on core 0.
 static inline void wait_end_parallel_section() {
-  loki_receive_token(3);
+  loki_receive_token(CH_REGISTER_3);
 }
 
 //============================================================================//
