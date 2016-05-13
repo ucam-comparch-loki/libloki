@@ -4,6 +4,8 @@
 #ifndef LOKI_ALLOC_H_
 #define LOKI_ALLOC_H_
 
+#include <stddef.h>
+
 //! \brief Make a previously-allocated memory block available for further
 //! allocations.
 void loki_free(void* ptr);

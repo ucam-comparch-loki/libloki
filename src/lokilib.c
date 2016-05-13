@@ -18,6 +18,8 @@ static void init_run_config(setup_func func, unsigned int cores) {
 
 // More flexible core initialisation. To be executed by core 0 of any tile.
 static void init_local_tile(const init_config* config) {
+  // Force the data to be re-fetched from main memory so it is up-to-date.
+  loki_invalidate_data(1, config, sizeof(init_config));
 
   uint tile = get_tile_id();
   uint cores = cores_this_tile(config->cores, tile, tile_id(1, 1));
@@ -82,15 +84,6 @@ static void init_local_tile(const init_config* config) {
     // Since there is no config func, all cores are ready at this point. Just need a tile to tile sync.
     loki_sync_tiles(num_tiles(config->cores));
   }
-}
-
-// Make a copy of the configuration struct in this tile, as it is awkward/
-// impossible to share it via memory.
-void receive_init_config() {
-  init_config* config = (init_config*)loki_receive(3);
-  loki_receive_data(config, sizeof(init_config), 3);
-
-  init_local_tile(config);
 }
 
 static inline void init_remote_tile(const tile_id_t tile, const init_config* config) {
@@ -638,14 +631,18 @@ static inline void wait_end_parallel_section() {
 //   roles for different cores.
 //============================================================================//
 
-struct distributed_func_internal {
+typedef struct distributed_func_internal_ {
   distributed_func const *config;
   tile_id_t first_tile;
-};
+} distributed_func_internal;
 
 // Start cores on the current tile. This must be executed by core 0.
-static void distribute_to_local_tile(const struct distributed_func_internal *internal) {
+static void distribute_to_local_tile(const distributed_func_internal *internal) {
+  // Invalidate all data and refetch it to ensure it is up-to-date.
+  loki_invalidate_data(1, internal, sizeof(distributed_func_internal));
   const distributed_func *config = internal->config;
+  loki_invalidate_data(1, config, sizeof(distributed_func));
+  loki_invalidate_data(1, config->data, config->data_size);
 
   // Make multicast connections to all other members of the SIMD group.
   const tile_id_t tile = get_tile_id();
@@ -656,13 +653,13 @@ static void distribute_to_local_tile(const struct distributed_func_internal *int
     const channel_t ipk_fifos = loki_mcast_address(bitmask, 0, false);
     const channel_t data_inputs = loki_mcast_address(bitmask, 3, false);
 
-    set_channel_map(2, ipk_fifos);
-    set_channel_map(3, data_inputs);
-    loki_send(3, (int)config->data);      // send pointer to function argument(s)
-    loki_send(3, (int)&loki_sleep);       // send function pointers
-    loki_send(3, (int)config->func);
-
+    set_channel_map(2, data_inputs);
+    loki_send(2, (int)config->data);      // send pointer to function argument(s)
+    loki_send(2, (int)&loki_sleep);       // send function pointers
+    loki_send(2, (int)config->func);
+    
     // Tell all cores to start executing the loop.
+    set_channel_map(2, ipk_fifos);
     asm volatile (
       "fetchr 0f\n"
       "rmtexecute -> 2\n"         // begin remote execution
@@ -681,13 +678,8 @@ static void distribute_to_local_tile(const struct distributed_func_internal *int
 }
 
 // Start cores on another tile.
-static void distribute_to_remote_tile(tile_id_t tile, struct distributed_func_internal const *internal) {
-  const distributed_func *config = internal->config;
-
-  // Flush the configuration data so it is accessible to the remote tile.
-  loki_flush_data(1, internal, sizeof(struct distributed_func_internal));
-  loki_flush_data(1, config, sizeof(distributed_func));
-  loki_flush_data(1, config->data, config->data_size);
+static void distribute_to_remote_tile(tile_id_t tile, distributed_func_internal const *internal) {
+  // Assume that all data has already been flushed.
   
   // Have core 0 of the remote tile share the data with all other cores there.
   loki_remote_execute(tile, 0, &distribute_to_local_tile, (void*)internal);
@@ -697,14 +689,20 @@ static void distribute_to_remote_tile(tile_id_t tile, struct distributed_func_in
 void loki_execute(const distributed_func* config) {
   // Multiple tiles: malloc data, and share via main memory.
   if (config->cores > CORES_PER_TILE) {      
-    struct distributed_func_internal* internal =
-        loki_malloc(sizeof(struct distributed_func_internal));
+    distributed_func_internal* internal =
+        loki_malloc(sizeof(distributed_func_internal));
     internal->config = config;
     internal->first_tile = get_tile_id();
 
+    // Flush the configuration data so it is accessible to the remote tiles.
+    loki_flush_data(1, internal, sizeof(distributed_func_internal));
+    loki_flush_data(1, config, sizeof(distributed_func));
+    loki_flush_data(1, config->data, config->data_size);
+
     int tile;
+    int thisTile = tile2int(get_tile_id());
     for (tile = 1; tile*CORES_PER_TILE < config->cores; tile++) {
-      distribute_to_remote_tile(int2tile(tile), internal);
+      distribute_to_remote_tile(int2tile(tile + thisTile), internal);
     }
 
     distribute_to_local_tile(internal);
@@ -715,7 +713,7 @@ void loki_execute(const distributed_func* config) {
   // Single tile: allocate on stack and share locally. malloc relies on global
   // variables, and is unsafe.
   else if (config->cores > 1) {
-    struct distributed_func_internal internal;
+    distributed_func_internal internal;
     internal.config = config;
     internal.first_tile = get_tile_id();
     

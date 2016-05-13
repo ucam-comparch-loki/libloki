@@ -23,7 +23,7 @@ typedef struct {
 //!
 //! \warning Must be executed on core 0 of the first tile in the group.
 //!
-//! \warning Overwrites channel map table entries 2 and 3, uses `CH_REGISTER_3`.
+//! \warning Overwrites channel map table entry 2 and uses `CH_REGISTER_3`.
 void loki_execute(const distributed_func* config);
 
 //! \brief Wait for all tiles between 0 and (tiles-1) to reach this point before
