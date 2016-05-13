@@ -82,10 +82,11 @@ void loki_spawn(void* func, const channel_t return_address, const int argc, ...)
 //! \param core Core on the given tile to execute the function on.
 //! \param func Function to be executed. Must take a single `void*` argument or none at all.
 //! \param args Struct containing all information required by the function.
+//! \param arg_size Size of the structure pointed to by `args`.
 //!
 //! \warning Overwrites channel map table entry 2.
 //! \warning If spawning on a remote tile, the content of `args` must first be flushed.
-void loki_remote_execute(tile_id_t tile, core_id_t core, void* func, void* args);
+void loki_remote_execute(tile_id_t tile, core_id_t core, void* func, void* args, size_t arg_size);
 
 //! A core will stop work if it executes this function.
 void loki_sleep(void) __attribute__((__noreturn__));
