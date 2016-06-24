@@ -987,7 +987,7 @@ static inline void loki_channel_memset_cache_line(
 #define LDADD(address, variable, output) {\
   asm (\
     "fetchr 0f\n"\
-    "ldadd.eop %1, 0(%0) -> " #output "\n0:\n"\
+    "ldadd.eop %1, %0, 0 -> " #output "\n0:\n"\
     :\
     : "r" ((void *)address), "r" ((int)variable)\
     : "memory"\
@@ -1027,7 +1027,7 @@ static inline void loki_channel_load_and_add(
 #define LDOR(address, variable, output) {\
   asm (\
     "fetchr 0f\n"\
-    "ldor.eop %1, 0(%0) -> " #output "\n0:\n"\
+    "ldor.eop %1, %0, 0 -> " #output "\n0:\n"\
     :\
     : "r" ((void *)address), "r" ((int)variable)\
     : "memory"\
@@ -1067,7 +1067,7 @@ static inline void loki_channel_load_and_or(
 #define LDAND(address, variable, output) {\
   asm (\
     "fetchr 0f\n"\
-    "ldand.eop %1, 0(%0) -> " #output "\n0:\n"\
+    "ldand.eop %1, %0, 0 -> " #output "\n0:\n"\
     :\
     : "r" ((void *)address), "r" ((int)variable)\
     : "memory"\
@@ -1107,7 +1107,7 @@ static inline void loki_channel_load_and_and(
 #define LDXOR(address, variable, output) {\
   asm (\
     "fetchr 0f\n"\
-    "ldxor.eop %1, 0(%0) -> " #output "\n0:\n"\
+    "ldxor.eop %1, %0, 0 -> " #output "\n0:\n"\
     :\
     : "r" ((void *)address), "r" ((int)variable)\
     : "memory"\
@@ -1147,7 +1147,7 @@ static inline void loki_channel_load_and_xor(
 #define EXCHANGE(address, variable, output) {\
   asm (\
     "fetchr 0f\n"\
-    "exchange.eop %1, 0(%0) -> " #output "\n0:\n"\
+    "exchange.eop %1, %0, 0 -> " #output "\n0:\n"\
     :\
     : "r" ((void *)address), "r" ((int)variable)\
     : "memory"\
