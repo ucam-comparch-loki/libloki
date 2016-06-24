@@ -1257,6 +1257,19 @@ static inline void loki_channel_acquire_ex(
 //! \param output must be an integer constant.
 //!
 //! Use functions instead of this macro where possible.
+
+// The message records the source of the request, i.e:
+// temp = (src_core) | (src_tile_y << 4) | (src_tile_x << 7) | (cmt_entry << 16)
+//    the core and tile location are read from CREG 1
+//    the top 16-bits is set to the channel name ("output")
+//
+// SEND_CONFIG out-of-band bits for core-to-core communications are
+//       bit 2 : acquire
+//       bit 1 : allocate
+//       bit 0 : eop
+//
+// The out-of-band bits are set to 0x3 to request a channel is allocated.
+//
 #define CHANNEL_ACQUIRE(output) {\
   register int temp;\
   asm volatile (\
