@@ -1,14 +1,11 @@
 /*! \file channel_io.h
  * \brief Functions to send and receive messages on channels. */
 
-// We have an unfortunate circular dependncy between headers, so this include
-// must be outside the include guard.
-#include <loki/channels.h>
-
 #ifndef LOKI_CHANNEL_IO_H_
 #define LOKI_CHANNEL_IO_H_
 
 #include <assert.h>
+#include <loki/channels.h>
 #include <loki/channel_map_table.h>
 #include <loki/control_registers.h>
 #include <loki/types.h>
@@ -1387,6 +1384,252 @@ static inline void loki_channel_wait_empty(int const channel) {
   }
 }
 
+//! \brief Test if an asynchronous connection has completed.
+//! \param id The channel that is connecting.
+//! \returns Whether or not the channel is now connected.
+//!
+//! This method polls a channel end to see if it has connected. A connection
+//! attempt should have already been started with \ref loki_connect_async. When
+//! this method returns true, the connection is completed and the channel can be
+//! safely used.
+static inline bool loki_connect_async_poll(int const id) {
+  // woche would block, defeating the point of the poll.
+  channel_t const c = get_channel_map(id);
+
+  // Multicast channels are connected!
+  if (1 != (c & 0x1)) return true;
+
+  // Check the credit count - have we got them all back?
+  if (c >> 14 == loki_channel_default_credit_count(c)) {
+    if (c & 0x2) {
+      // Acquired bit is set - we're ready to go.
+      return true;
+    } else {
+      loki_channel_acquire(id);
+      return false;
+    }
+  } else {
+    // Last attempt has not yet returned.
+    return false;
+  }
+}
+
+//! \brief Begins an asynchronous connection operation.
+//! \param id The channel to connect.
+//! \param tile The remote tile to connect to.
+//! \param core The core on the tile to connect to.
+//! \param channel The destination channel to connect to.
+//! \param allow_multicast Allow the use of a faster multicast channel where
+//!        possible.
+//!
+//! This method overwrites the channel map table entry specified by id, and then
+//! begins a connection procedure to that channel. The status of this connection
+//! operation can be checked with \ref loki_connect_async_poll. Alternatively, a
+//! core can sleep until the connection is completed with
+//! \ref loki_connect_async_wait. A synchronous version of this operation is
+//! available \ref loki_connect_ex.
+//!
+//! \remark In order to ensure deadlock freedom, the credit count is set to
+//! \ref loki_default_credit_count(channel) for the connection.
+//!
+//! \remark If allow_multicast is set, the channel may be allocated as a multicast
+//! as opposed to a core to core channel, which has different semantics but is
+//! faster.
+static inline void loki_connect_async_ex(
+    int const id
+  , tile_id_t const tile
+  , enum Cores const core
+  , enum Channels const channel
+  , bool const allow_multicast
+) {
+  channel_t const c =
+    allow_multicast && (tile == get_tile_id()) ?
+      loki_mcast_address(
+          single_core_bitmask(core)
+        , channel
+        , false
+      )
+    :
+      loki_core_address(
+          tile
+        , core
+        , channel
+        , loki_default_credit_count(channel)
+      );
+
+  set_channel_map(id, c);
+
+  loki_connect_async_poll(id);
+}
+
+//! \brief Begins an asynchronous connection operation.
+//! \param id The channel to connect.
+//! \param tile The remote tile to connect to.
+//! \param core The core on the tile to connect to.
+//! \param channel The destination channel to connect to.
+//!
+//! This method overwrites the channel map table entry specified by id, and then
+//! begins a connection procedure to that channel. The status of this connection
+//! operation can be checked with \ref loki_connect_async_poll. Alternatively, a
+//! core can sleep until the connection is completed with
+//! \ref loki_connect_async_wait. A synchronous version of this operation is
+//! available \ref loki_connect.
+//!
+//! \remark In order to ensure deadlock freedom, the credit count is set to
+//! \ref loki_default_credit_count(channel) for the connection.
+static inline void loki_connect_async(
+    int const id
+  , tile_id_t const tile
+  , enum Cores const core
+  , enum Channels const channel
+) {
+  loki_connect_async_ex(id, tile, core, channel, false);
+}
+
+//! \brief Wait for the end of an asynchronous connection operation.
+//! \param id The channel to wait for.
+//!
+//! Sleeps the core until the asynchronous connection operation on the specified
+//! channel is completed.
+static inline void loki_connect_async_wait(int const id) {
+  while (!loki_connect_async_poll(id)) {
+    loki_channel_wait_empty(id);
+  }
+}
+
+//! \brief Connects to the specified destination.
+//! \param id The channel to connect.
+//! \param tile The remote tile to connect to.
+//! \param core The core on the tile to connect to.
+//! \param channel The destination channel to connect to.
+//! \param allow_multicast Allow the use of a faster multicast channel where
+//!        possible.
+//!
+//! This method overwrites the channel map table entry specified by id, and then
+//! performs a connection procedure to that channel. An asynchronous version of
+//! this operation is available \ref loki_connect_async_ex.
+//!
+//! \remark In order to ensure deadlock freedom, the credit count is set to
+//! \ref DEFAULT_CREDIT_COUNT for the connection.
+//!
+//! \remark If allow_multicast is set, the channel may be allocated as a multicast
+//! as opposed to a core to core channel, which has different semantics but is
+//! faster.
+static inline void loki_connect_ex(
+    int const id
+  , tile_id_t const tile
+  , enum Cores const core
+  , enum Channels const channel
+  , bool const allow_multicast
+) {
+  loki_connect_async_ex(id, tile, core, channel, allow_multicast);
+  loki_connect_async_wait(id);
+}
+
+//! \brief Connects to the specified destination.
+//! \param id The channel to connect.
+//! \param tile The remote tile to connect to.
+//! \param core The core on the tile to connect to.
+//! \param channel The destination channel to connect to.
+//!
+//! This method overwrites the channel map table entry specified by id, and then
+//! performs a connection procedure to that channel. An asynchronous version of
+//! this operation is available \ref loki_connect_async.
+//!
+//! \remark In order to ensure deadlock freedom, the credit count is set to
+//! \ref DEFAULT_CREDIT_COUNT for the connection.
+static inline void loki_connect(
+    int const id
+  , tile_id_t const tile
+  , enum Cores const core
+  , enum Channels const channel
+) {
+  loki_connect_ex(id, tile, core, channel, false);
+}
+
+//! \brief Disconnects the specified channel.
+//! \param id The channel to disconnect.
+//!
+//! This operation releases the specified channel, allowing another core to
+//! connect to it. It first blocks until the channel is empty, in order to
+//! ensure that no credits are outstanding.
+static inline void loki_disconnect(int const id) {
+  channel_t const c = get_channel_map(id);
+
+  // Multicast channels are not connected!
+  if (1 != (c & 0x1)) return;
+
+  loki_channel_wait_empty(id);
+  loki_channel_release(id);
+}
+
+//! \brief Begins an asynchronous connection operation within a group.
+//! \param id The channel to connect.
+//! \param first_core_id The first core in the group.
+//! \param index The index of the core in the group to connect to.
+//! \param channel The destination channel to connect to.
+//! \param allow_multicast Allow the use of a faster multicast channel where
+//!        possible.
+//!
+//! This method overwrites the channel map table entry specified by id, and then
+//! begins a connection procedure to that channel. The status of this connection
+//! operation can be checked with \ref loki_connect_async_poll.
+//! Alternatively, a core can sleep until the connection is completed with
+//! \ref loki_connect_async_wait. A synchronous version of this operation
+//! is available \ref loki_group_connect.
+//!
+//! \remark In order to ensure deadlock freedom, the credit count is set to
+//! \ref loki_default_credit_count(channel) for the connection.
+//!
+//! \remark If allow_multicast is set, the channel may be allocated as a multicast
+//! as opposed to a core to core channel, which has different semantics but is
+//! faster.
+static inline void loki_group_connect_async(
+    int const id
+  , core_id_t const first_core_id
+  , unsigned int const index
+  , enum Channels const channel
+  , bool const allow_multicast
+) {
+  core_id_t const core_id = group_core_id(first_core_id, index);
+  loki_connect_async_ex(
+      id
+    , get_unique_core_id_tile(core_id)
+    , get_unique_core_id_core(core_id)
+    , channel
+    , allow_multicast
+  );
+}
+
+//! \brief Connects to the specified destination within a group.
+//! \param id The channel to connect.
+//! \param first_core_id The first core in the group.
+//! \param index The index of the core in the group to connect to.
+//! \param channel The destination channel to connect to.
+//! \param allow_multicast Allow the use of a faster multicast channel where
+//!        possible.
+//!
+//!
+//! This method overwrites the channel map table entry specified by id, and then
+//! performs a connection procedure to that channel. An asynchronous version of
+//! this operation is available \ref loki_group_connect_async.
+//!
+//! \remark In order to ensure deadlock freedom, the credit count is set to
+//! \ref DEFAULT_CREDIT_COUNT for the connection.
+//!
+//! \remark If allow_multicast is set, the channel may be allocated as a multicast
+//! as opposed to a core to core channel, which has different semantics but is
+//! faster.
+static inline void loki_group_connect(
+    int const id
+  , core_id_t const first_core_id
+  , unsigned int const index
+  , enum Channels const channel
+  , bool const allow_multicast
+) {
+  loki_group_connect_async(id, first_core_id, index, channel, allow_multicast);
+  loki_connect_async_wait(id);
+}
 
 
 #endif

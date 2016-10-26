@@ -1,14 +1,11 @@
 /*! \file channel_map_table.h
  * \brief Functions to access the channel map table. */
 
-// We have an unfortunate circular dependncy between headers, so this include
-// must be outside the include guard.
-#include <loki/channels.h>
-
 #ifndef LOKI_CHANNEL_MAP_TABLE_H_
 #define LOKI_CHANNEL_MAP_TABLE_H_
 
 #include <assert.h>
+#include <loki/channels.h>
 
 //! The number of entries in the channel map table, including reserved entries.
 #define CHANNEL_MAP_TABLE_SIZE 16

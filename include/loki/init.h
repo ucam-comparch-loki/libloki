@@ -6,6 +6,7 @@
 
 #include <loki/channels.h>
 #include <loki/types.h>
+#include <stddef.h>
 
 //! Function to be run on each core to do setup.
 typedef void (*setup_func)(void);
