@@ -126,4 +126,10 @@ static inline channel_t loki_core_address_ex(
       );
 }
 
+/* Historically this header included these, so we continue to do so for
+ * compatibility. */
+
+#include <loki/channel_io.h>
+#include <loki/channel_map_table.h>
+
 #endif
