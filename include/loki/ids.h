@@ -22,77 +22,6 @@
 #include <loki/control_registers.h>
 #include <loki/types.h>
 
-//! \brief Encode a tile's position from its coordinates.
-static inline tile_id_t tile_id(const unsigned int x, const unsigned int y) {
-  return (x << 3) | (y << 0);
-}
-
-//! \brief Convert a tile_id_t into a global tile number (useful for iterating).
-static inline unsigned int tile2int(const tile_id_t tile) {
-  unsigned int x = (tile >> 3) - 1;
-  unsigned int y = (tile & 7) - 1;
-  return (y * COMPUTE_TILE_COLUMNS) + x;
-}
-
-//! \brief Convert a global tile number into the tile_id_t type.
-static inline tile_id_t int2tile(const unsigned int val) {
-  return tile_id((val % COMPUTE_TILE_COLUMNS) + 1, (val / COMPUTE_TILE_COLUMNS) + 1);
-}
-
-//! \brief Generate a bitmask representing the first `num_cores` cores on the
-//! local tile.
-//!
-//! The result is in the format required by \ref loki_mcast_address.
-static inline enum MulticastDestinations all_cores(uint num_cores) {
-  return (enum MulticastDestinations)((1 << num_cores) - 1);
-}
-
-//! \brief Generate a bitmask representing the first `num_cores` cores on the
-//! local tile, but excluding core 0. Used to allow core 0 to send data to
-//! the remaining `num_cores - 1` other cores.
-//!
-//! The result is in the format required by \ref loki_mcast_address.
-static inline enum MulticastDestinations all_cores_except_0(uint num_cores) {
-  return all_cores(num_cores) & ~MULTICAST_CORE_0;
-}
-
-//! \brief Generate a bitmask representing the first `num_cores` cores on the
-//! local tile, but excluding this core. Used to allow this core to send data to
-//! the remaining `num_cores - 1` other cores.
-//!
-//! The result is in the format required by \ref loki_mcast_address.
-static inline enum MulticastDestinations all_cores_except_current(uint num_cores) {
-  return all_cores(num_cores) & ~single_core_bitmask(get_core_id());
-}
-
-//! \brief Generate a bitmask for a single core on the local tile.
-//!
-//! The result is in the format required by \ref loki_mcast_address.
-static inline enum MulticastDestinations single_core_bitmask(enum Cores core) {
-  return (enum MulticastDestinations)(1 << core);
-}
-
-//! \brief Compute the minimum number of tiles required to hold the given number
-//! of cores.
-static inline unsigned int num_tiles(const unsigned int cores) {
-  return ((cores - 1)/CORES_PER_TILE) + 1;
-}
-
-//! \brief Calculate the number of cores that are active on a given tile, given
-//! a total number of active cores.
-//! \param cores Total number of cores executing.
-//! \param tile ID of this tile.
-//! \param first_tile ID of first tile in the group.
-static inline unsigned int cores_this_tile(
-    const unsigned int cores
-  , const tile_id_t tile
-  , const tile_id_t first_tile
-) {
-  return (cores - (tile2int(tile) - tile2int(first_tile)) * CORES_PER_TILE > CORES_PER_TILE)
-       ? CORES_PER_TILE
-       : cores - (tile2int(tile) - tile2int(first_tile)) * CORES_PER_TILE;
-}
-
 //! \brief Return the globally unique idenitifer for this core.
 static inline core_id_t get_unique_core_id(void) __attribute__((const));
 static inline core_id_t get_unique_core_id(void) {
@@ -124,6 +53,77 @@ static inline enum Cores get_core_id() {
 static inline tile_id_t get_tile_id() __attribute__((const));
 static inline tile_id_t get_tile_id() {
   return get_unique_core_id_tile(get_control_register(CR_CPU_LOCATION));
+}
+
+//! \brief Encode a tile's position from its coordinates.
+static inline tile_id_t tile_id(const unsigned int x, const unsigned int y) {
+  return (x << 3) | (y << 0);
+}
+
+//! \brief Convert a tile_id_t into a global tile number (useful for iterating).
+static inline unsigned int tile2int(const tile_id_t tile) {
+  unsigned int x = (tile >> 3) - 1;
+  unsigned int y = (tile & 7) - 1;
+  return (y * COMPUTE_TILE_COLUMNS) + x;
+}
+
+//! \brief Convert a global tile number into the tile_id_t type.
+static inline tile_id_t int2tile(const unsigned int val) {
+  return tile_id((val % COMPUTE_TILE_COLUMNS) + 1, (val / COMPUTE_TILE_COLUMNS) + 1);
+}
+
+//! \brief Generate a bitmask for a single core on the local tile.
+//!
+//! The result is in the format required by \ref loki_mcast_address.
+static inline enum MulticastDestinations single_core_bitmask(enum Cores core) {
+  return (enum MulticastDestinations)(1 << core);
+}
+
+//! \brief Generate a bitmask representing the first `num_cores` cores on the
+//! local tile.
+//!
+//! The result is in the format required by \ref loki_mcast_address.
+static inline enum MulticastDestinations all_cores(uint num_cores) {
+  return (enum MulticastDestinations)((1 << num_cores) - 1);
+}
+
+//! \brief Generate a bitmask representing the first `num_cores` cores on the
+//! local tile, but excluding core 0. Used to allow core 0 to send data to
+//! the remaining `num_cores - 1` other cores.
+//!
+//! The result is in the format required by \ref loki_mcast_address.
+static inline enum MulticastDestinations all_cores_except_0(uint num_cores) {
+  return all_cores(num_cores) & ~MULTICAST_CORE_0;
+}
+
+//! \brief Generate a bitmask representing the first `num_cores` cores on the
+//! local tile, but excluding this core. Used to allow this core to send data to
+//! the remaining `num_cores - 1` other cores.
+//!
+//! The result is in the format required by \ref loki_mcast_address.
+static inline enum MulticastDestinations all_cores_except_current(uint num_cores) {
+  return all_cores(num_cores) & ~single_core_bitmask(get_core_id());
+}
+
+//! \brief Compute the minimum number of tiles required to hold the given number
+//! of cores.
+static inline unsigned int num_tiles(const unsigned int cores) {
+  return ((cores - 1)/CORES_PER_TILE) + 1;
+}
+
+//! \brief Calculate the number of cores that are active on a given tile, given
+//! a total number of active cores.
+//! \param cores Total number of cores executing.
+//! \param tile ID of this tile.
+//! \param first_tile ID of first tile in the group.
+static inline unsigned int cores_this_tile(
+    const unsigned int cores
+  , const tile_id_t tile
+  , const tile_id_t first_tile
+) {
+  return (cores - (tile2int(tile) - tile2int(first_tile)) * CORES_PER_TILE > CORES_PER_TILE)
+       ? CORES_PER_TILE
+       : cores - (tile2int(tile) - tile2int(first_tile)) * CORES_PER_TILE;
 }
 
 //! \brief Given a continuous group of cores starting at first_core, compute
