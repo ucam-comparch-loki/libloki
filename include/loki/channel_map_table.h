@@ -1,5 +1,24 @@
 /*! \file channel_map_table.h
- * \brief Functions to access the channel map table. */
+ * \brief Functions to access the channel map table. 
+ *
+ * Most Loki instructions have the option to send their results onto the network
+ * as well as storing them locally in the register file. The channel map table 
+ * provides a layer of abstraction for this process. Instructions specify an
+ * entry in the channel map table, and that entry describes how the data should
+ * reach its destination(s).
+ *
+ * The channel map table can be updated in software at runtime, allowing very
+ * flexible communication mechanisms. Network destinations can include memory
+ * banks on the local tile, any core on the chip, or any subset of cores on the
+ * local tile.
+ *
+ * Each core has its own private channel map table, and is responsible for
+ * maintaining its contents. It behaves in a similar way to a register file, and
+ * has its own ABI describing how the entries should be preserved:
+ * [ABI](https://svr-rdm34-issue.cl.cam.ac.uk/w/loki/abi/#channel-map-table).
+ *
+ * To generate entries to be stored in the channel map table, see channels.h.
+ */
 
 #ifndef LOKI_CHANNEL_MAP_TABLE_H_
 #define LOKI_CHANNEL_MAP_TABLE_H_
@@ -7,10 +26,11 @@
 #include <assert.h>
 #include <loki/channels.h>
 
-//! The number of entries in the channel map table, including reserved entries.
+//! \brief The number of entries in the channel map table, including reserved
+//! entries.
 #define CHANNEL_MAP_TABLE_SIZE 16
 
-//! Get an entry from the channel map table.
+//! \brief Get an entry from the channel map table.
 static inline channel_t get_channel_map(int id) {
   channel_t result;
   asm volatile (

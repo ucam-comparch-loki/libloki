@@ -1,5 +1,19 @@
 /*! \file scratchpad.h
- * \brief Functions to access the core's local scratchpad. */
+ * \brief Functions to access the core's local scratchpad.
+ *
+ * Each core has its own private scratchpad which it is responsible for
+ * maintaining. The contents are completely software-managed: data may be
+ * modified at any time, and state is not automatically pushed back to main
+ * memory.
+ *
+ * The local scratchpad is intended to improve performance and energy efficiency
+ * in some common use cases. To achieve this, its access is very restricted. It
+ * *may* be more efficient to use a memory bank in scratchpad mode in the
+ * following cases:
+ *  * Accessing data which is not word-aligned.
+ *  * Accessing data which requires a non-trivial addressing mode (e.g. base +
+ * offset).
+ */
 
 #ifndef LOKI_SCRATCHPAD_H_
 #define LOKI_SCRATCHPAD_H_
@@ -11,7 +25,8 @@
 //! Number of words in each core's scratchpad.
 #define SCRATCHPAD_NUM_WORDS 256
 
-//! Read the word in the scratchpad at the given address.
+//! \brief Read the word in the scratchpad at the given address. The scratchpad is
+//! word-addressed.
 static inline int scratchpad_read(unsigned int address) {
   assert(address < SCRATCHPAD_NUM_WORDS);
   int result;
@@ -25,7 +40,8 @@ static inline int scratchpad_read(unsigned int address) {
   return result;
 }
 
-//! Write the given word into the scratchpad at the given address.
+//! \brief Write the given word into the scratchpad at the given address. The
+//! scratchpad is word-addressed.
 static inline void scratchpad_write(unsigned int address, int value) {
   assert(address < SCRATCHPAD_NUM_WORDS);
   asm volatile (
@@ -37,10 +53,11 @@ static inline void scratchpad_write(unsigned int address, int value) {
   );
 }
 
-//! \brief Read multiple words from the core's local scratchpad.
-//! \param data pointer to the buffer
-//! \param address the position in the core's local scratchpad file to read the first value
-//! \param len the number of words to read
+//! \brief Read multiple words from the core's local scratchpad. The scratchpad
+//! is word-addressed.
+//! \param data Pointer to the buffer
+//! \param address The position in the core's local scratchpad file to read the first value
+//! \param len The number of words to read
 //!
 //! The order of arguments for these methods is designed to mimic memcpy.
 static inline void scratchpad_read_words(int *data, unsigned int address, size_t len) {
@@ -50,10 +67,11 @@ static inline void scratchpad_read_words(int *data, unsigned int address, size_t
   }
 }
 
-//! \brief Read multiple data values from the core's local scratchpad.
-//! \param data pointer to the buffer
-//! \param address the position in bytes in the core's local scratchpad file to read the first value
-//! \param len the number of bytes to read
+//! \brief Read multiple data values from the core's local scratchpad. The
+//! scratchpad is byte-addressed.
+//! \param data Pointer to the buffer
+//! \param address The position in bytes in the core's local scratchpad file to read the first value
+//! \param len The number of bytes to read
 //!
 //! Note that the address parameter is in bytes!
 //!
@@ -69,10 +87,11 @@ static inline void scratchpad_read_bytes(void *data, unsigned int address, size_
   }
 }
 
-//! \brief Store multiple words in the core's local scratchpad.
-//! \param address the position in the core's local scratchpad file to store the first value
-//! \param data pointer to the data
-//! \param len the number of words to store
+//! \brief Store multiple words in the core's local scratchpad. The scratchpad
+//! is word-addressed.
+//! \param address The position in the core's local scratchpad file to store the first value
+//! \param data Pointer to the data
+//! \param len The number of words to store
 //!
 //! The order of arguments for these methods is designed to mimic memcpy.
 static inline void scratchpad_write_words(unsigned int address, const int *data, size_t len) {
@@ -82,10 +101,11 @@ static inline void scratchpad_write_words(unsigned int address, const int *data,
   }
 }
 
-//! \brief Store multiple data values in the core's local scratchpad.
-//! \param address the position in bytes in the core's local scratchpad file to store the first value
-//! \param data pointer to the data
-//! \param len the number of bytes to store
+//! \brief Store multiple data values in the core's local scratchpad. The
+//! scratchpad is byte-addressed.
+//! \param address The position in bytes in the core's local scratchpad file to store the first value
+//! \param data Pointer to the data
+//! \param len The number of bytes to store
 //!
 //! Note that the address parameter is in bytes!
 //!

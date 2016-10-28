@@ -1,5 +1,30 @@
 /*! \file memory.h
- * \brief Memory control operations for Loki. */
+ * \brief Memory control operations for Loki.
+ *
+ * This file contains functions which allow control over the memory hierarchy
+ * beyond the L1 cache. For configuration of the L1 cache itself, see
+ * channels.h.
+ *
+ * Each tile contains a directory which is accessed on an L1 cache miss. The
+ * directory tells which tile on the chip is now responsible for providing the
+ * required data. This tile may be another compute tile, in which case the 8
+ * memory banks there are treated as a single 8-way set-associative L2 cache, or
+ * the tile may be a memory controller at the edge of the chip, in which case
+ * main memory is accessed.
+ *
+ * A number of bits are taken from the missing memory address and used to select
+ * an entry in the directory. The position of these bits is configurable (using
+ * `mask_index`), and these bits can optionally be modified (using 
+ * `replacement_bits`). The entry also points to another tile on the chip, to
+ * which the request will be forwarded.
+ *
+ * In the 4x4 test chip:
+ *  * Compute tiles occupy positions (1,1) to (4,4), inclusive
+ *  * Memory controllers occupy positions (1,0), (4,0), (1,5) and (4,5)
+ *
+ * Further documentation is available
+ * [here](https://svr-rdm34-issue.cl.cam.ac.uk/w/loki/architecture/memory/#directory).
+ */
 
 #ifndef LOKI_MEMORY_H_
 #define LOKI_MEMORY_H_
@@ -29,7 +54,7 @@ typedef struct loki_memory_directory_configuration {
 	unsigned char mask_index;
 } loki_memory_directory_configuration_t;
 
-//! Converts a \ref loki_memory_directory_entry_t to and int.
+//! Convert a \ref loki_memory_directory_entry_t to an int.
 static inline int loki_memory_directory_entry_to_int(
 	  loki_memory_directory_entry_t const value
 ) {
@@ -38,7 +63,7 @@ static inline int loki_memory_directory_entry_to_int(
 		(int)value.next_tile;
 }
 
-//! \brief Updates a single entry in the L1 directory on the default memory
+//! \brief Update a single entry in the L1 directory on the default memory
 //! channel.
 //!
 //! \param address The address to access, which determines the entry to update.
@@ -62,7 +87,7 @@ static inline void loki_memory_directory_l1_entry_update(
 	);
 }
 
-//! \brief Updates the directory mask in the L1 directory on the default memory
+//! \brief Update the directory mask in the L1 directory on the default memory
 //! channel.
 //!
 //! \param value New value of the directory mask. Must be between 0 and
@@ -85,7 +110,7 @@ static inline void loki_memory_directory_l1_mask_update(
 	);
 }
 
-//! \brief Reconfigures a tile's directory.
+//! \brief Reconfigure a tile's directory.
 //!
 //! \param value The new configuration of the directory. If the configuration is
 //! impossible, the behaviour of this method is undefined.
@@ -106,7 +131,7 @@ void loki_memory_directory_reconfigure(
 	  loki_memory_directory_configuration_t const value
 );
 
-//! The memmory configuration of a Loki memory bank.
+//! The configuration of a Loki memory bank.
 //!
 //! \remark If a bank is neither icache nor dcache, it is assumed it must be
 //! acting as a scratchpad or special memory.
@@ -334,7 +359,7 @@ static loki_memory_cache_configuration_t const loki_memory_cache_configuration_n
 	, .dcache_skip_l2 = MULTICAST_CORE_ALL
 };
 
-//! \brief Reconfigures a tile's memory system.
+//! \brief Reconfigure a tile's memory system.
 //!
 //! \param cache The new configuration of the core's caches. If the
 //! configuration is impossible, the behaviour of this method is undefined.

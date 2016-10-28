@@ -34,7 +34,7 @@ typedef unsigned int tile_id_t;
 //! Core ID - a core on the processor.
 typedef unsigned int core_id_t;
 
-//! Components of a tile.
+//! Positions of cores within a tile.
 enum Cores {
   COMPONENT_CORE_0, //!< Core 0.
   COMPONENT_CORE_1, //!< Core 1.
@@ -46,6 +46,7 @@ enum Cores {
   COMPONENT_CORE_7  //!< Core 7.
 };
 
+//! Positions of memory banks within a tile.
 enum Memories {
   COMPONENT_BANK_0, //!< Cache Bank 0.
   COMPONENT_BANK_1, //!< Cache Bank 1.
@@ -57,7 +58,11 @@ enum Memories {
   COMPONENT_BANK_7  //!< Cache Bank 7.
 };
 
-//! Destinations for a muticast (flags).
+//! \brief Destinations for multicast communication.
+//!
+//! This set of values is not exhaustive, but simply provide a useful collection
+//! of common destinations. Any bitmask of \ref CORES_PER_TILE bits is valid,
+//! with the least significant bit representing core 0.
 enum MulticastDestinations {
   MULTICAST_CORE_0 = 0x01, //!< Core 0.
   MULTICAST_CORE_1 = 0x02, //!< Core 1.
@@ -86,7 +91,7 @@ enum MulticastDestinations {
   MULTICAST_CORE_ALL = MULTICAST_CORE_0123 | MULTICAST_CORE_4567,
 };
 
-//! Input channels usable in communications.
+//! Input channels usable in communications with cores.
 enum Channels {
   CH_IPK_FIFO, //!< Instruction FIFO.
   CH_IPK_CACHE, //!< Instruction packet cache. Only usable in memory configurations.
@@ -123,11 +128,11 @@ enum SystemCalls {
 
 //! Cache mode.
 enum MemConfigType {
-  SCRATCHPAD          = 0, //!< Cache behaves as scratchpad (no miss handling logic).
-  CACHE               = 1  //!< Cahce behaves as cache.
+  SCRATCHPAD          = 0, //!< Memory banks behave as scratchpad (no miss handling logic).
+  CACHE               = 1  //!< Memory banks behave as cache.
 };
 
-//! Size of line in cache.
+//! \deprecated Size of line in cache. No longer supported.
 enum MemConfigLineSize {
   LINESIZE_1          = 0, //!< 1 word.
   LINESIZE_2          = 1, //!< 2 words.
@@ -149,7 +154,7 @@ enum MemConfigGroupSize {
   GROUPSIZE_64        = 6  //!< 64 banks.
 };
 
-//! Associativity of each cache bank.
+//! \deprecated Associativity of each cache bank. No longer supported.
 enum MemConfigAssociativity {
   ASSOCIATIVITY_1     = 0, //!< Direct mapped.
   ASSOCIATIVITY_2     = 1, //!< 2 way set associative.
