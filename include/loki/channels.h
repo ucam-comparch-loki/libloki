@@ -139,17 +139,14 @@ static inline channel_t loki_mcast_address(const enum MulticastDestinations bitm
 //! bypass it and go straight to main memory.
 //! \param scratchpadL1 When `true`, L1 memory banks are accessed as scratchpads
 //! rather than caches.
-//! \param scratchpadL2 When `true`, L2 memory banks (if any) are accessed as
-//! scratchpads rather than caches.
 static inline channel_t loki_mem_address(const enum Memories           groupStart,
                                          const enum Cores              returnCore,
                                          const enum Channels           returnChannel,
                                          const enum MemConfigGroupSize groupSize,
                                          const bool                    skipL1,
                                          const bool                    skipL2,
-                                         const bool                    scratchpadL1,
-                                         const bool                    scratchpadL2) {
-  return (scratchpadL2 << 16) | (scratchpadL1 << 15) | (skipL2 << 14) | (skipL1 << 13)
+                                         const bool                    scratchpadL1) {
+  return (scratchpadL1 << 15) | (skipL2 << 14) | (skipL1 << 13)
        | (groupSize << 11) | (returnChannel << 8) | (groupStart << 5) | (returnCore << 2) | 2;
 }
 
@@ -174,7 +171,7 @@ static inline channel_t loki_cache_address(
   , const enum MemConfigGroupSize groupSize
 ) {
   return loki_mem_address(
-    groupStart, returnCore, returnChannel, groupSize, false, false, false, false
+    groupStart, returnCore, returnChannel, groupSize, false, false, false
   );
 }
 
@@ -200,7 +197,7 @@ static inline channel_t loki_scratchpad_address(
   , const enum MemConfigGroupSize groupSize
 ) {
   return loki_mem_address(
-    groupStart, returnCore, returnChannel, groupSize, false, false, true, false
+    groupStart, returnCore, returnChannel, groupSize, false, false, true
   );
 }
 

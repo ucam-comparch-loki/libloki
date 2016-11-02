@@ -32,6 +32,7 @@
 #include <assert.h>
 #include <loki/channel_io.h>
 #include <loki/types.h>
+#include <stdbool.h>
 
 //! Log base 2 of size of the MHL directory.
 #define LOKI_MEMORY_DIRECTORY_SIZE_LOG2 4
@@ -44,6 +45,8 @@ typedef struct loki_memory_directory_entry {
 	tile_id_t next_tile;
 	//! Segment replacement bits. \ref LOKI_MEMORY_DIRECTORY_SIZE_LOG2 bits.
 	unsigned char replacement_bits;
+	//! Whether or not the entry is a scratchpad (or else a cache/main memory).
+	bool scratchpad;
 } loki_memory_directory_entry_t;
 
 //! Full contents of the MHL directory.
@@ -59,6 +62,7 @@ static inline int loki_memory_directory_entry_to_int(
 	  loki_memory_directory_entry_t const value
 ) {
 	return
+		((int)value.scratchpad << (TILE_ID_T_BITS + LOKI_MEMORY_DIRECTORY_SIZE_LOG2)) |
 		((int)value.replacement_bits << TILE_ID_T_BITS) |
 		(int)value.next_tile;
 }

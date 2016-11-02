@@ -286,7 +286,7 @@ static inline void loki_memory_reconfigure_send_channels(
               j, i, CH_REGISTER_2, group_size
             , value.dcache_skip_l1 & single_core_bitmask(i)
             , value.dcache_skip_l2 & single_core_bitmask(i)
-            , false, false
+            , false
             );
           gs = 1;
           break;
@@ -302,7 +302,7 @@ static inline void loki_memory_reconfigure_send_channels(
               j, i, CH_IPK_CACHE, group_size
             , value.icache_skip_l1 & single_core_bitmask(i)
             , value.icache_skip_l2 & single_core_bitmask(i)
-            , false, false
+            , false
             );
           gs = 1;
           break;
@@ -345,8 +345,8 @@ void loki_memory_cache_reconfigure(
     "sendconfig r0, 0x15 -> 3\n" // Flush all lines.
     "cregrdi %0, 1\n"
     "andi.p r0, %0, 1\n"
-    "if!p?sendconfig r0, 0x881 -> 3\n" // Ping.
-    "ifp?sendconfig  r0, 0xc81 -> 3\n" // Ping.
+    "if!p?sendconfig r0, 0x481 -> 3\n" // Ping.
+    "ifp?sendconfig  r0, 0x681 -> 3\n" // Ping.
     "nor.eop r0, r0, r0\n"
     "0:\n" // Since all other cores idle, at this point all banks are flusing.
     "addui r0, r1, 0f - 0b -> 4\n"
@@ -399,8 +399,8 @@ void loki_memory_directory_reconfigure(
     "sendconfig r0, 0x15 -> 3\n" // Flush all lines.
     "cregrdi %0, 1\n"
     "andi.p r0, %0, 1\n"
-    "if!p?sendconfig r0, 0x881 -> 3\n" // Ping.
-    "ifp?sendconfig  r0, 0xc81 -> 3\n" // Ping.
+    "if!p?sendconfig r0, 0x481 -> 3\n" // Ping.
+    "ifp?sendconfig  r0, 0x681 -> 3\n" // Ping.
     "nor.eop r0, r0, r0\n"
     ".p2align 5\n"
     /* cache line boundary */
@@ -462,8 +462,8 @@ void loki_memory_tile_reconfigure(
     "sendconfig r0, 0x15 -> 3\n" // Flush all lines.
     "cregrdi %0, 1\n"
     "andi.p r0, %0, 1\n"
-    "if!p?sendconfig r0, 0x881 -> 3\n" // Ping.
-    "ifp?sendconfig  r0, 0xc81 -> 3\n" // Ping.
+    "if!p?sendconfig r0, 0x481 -> 3\n" // Ping.
+    "ifp?sendconfig  r0, 0x681 -> 3\n" // Ping.
     "setchmapi.eop 1, r3\n" // Data channel.
     ".p2align 5\n"
     /* cache line boundary */
