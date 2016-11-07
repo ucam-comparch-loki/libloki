@@ -390,37 +390,59 @@ void loki_memory_directory_reconfigure(
   int t0;
 
   // Send all the necessary instructions to all cores including this one.
-  // That way no IFetch will be triggered while this code is running.
   //
-  // This is a rather subtle little sequence - be careful when modifying!
+  // The gist of this code is that each cores sends a flush all lines to the
+  // corresponding bank. To determine if this has finished, they then send a
+  // load. Core 0 receives all of these loads, which allows it to act as global
+  // syncrohnisation. Core 0 then reconfigures the directory mask and then each
+  // core changes to directory entries.
+  //
+  // Once the reconfiguration starts, we must prevent all IFetch, which is done
+  // by ensuring the reconfiguration will be an IPK hit on core 0, and will be
+  // executed form the FIFO on other cores.
   asm volatile (
     "fetchr 0f\n"
+    // Broadcast flush all lines to each core (including this one).
     "rmtexecute -> 2\n"
     "sendconfig r0, 0x15 -> 3\n" // Flush all lines.
     "cregrdi %0, 1\n"
     "andi.p r0, %0, 1\n"
+    // Even banks send result to r4, odd to r6. This avoids filling the buffer
+    // and therefore deadlock.
     "if!p?sendconfig r0, 0x481 -> 3\n" // Ping.
     "ifp?sendconfig  r0, 0x681 -> 3\n" // Ping.
-    "nor.eop r0, r0, r0\n"
-    ".p2align 5\n"
-    /* cache line boundary */
-    ".fill 0x1, 4, 0\n"
+    // Need predicate to be true on all cores so ifp? broadcast does execute.
+    "seteq.p.eop r0, r0, r0\n"
     "0:\n"
-    "addui r0, r1, 0f - 0b -> 4\n"
-    "or r0, r4, r6\n" // Wait.
-    "or r0, r4, r6\n" // Wait.
-    "or r0, r4, r6\n" // Wait.
-    "or r0, r4, r6\n" // Wait.
-    "sendconfig r0, 0x1c -> 3\n" // Directory mask. Fetch to next line beats this.
-    "sendconfig %1, 0x1f -> 3\n" // Directory mask.
-    /* cache line boundary */
-    "rmtexecute -> 2\n"
-    "sendconfig r0, 0x17 -> 3\n" // Invalidate all lines.
-    "sendconfig r5, 0x1a -> 3\n" // Directory entry.
-    "sendconfig r5, 0x1f -> 3\n" // Directory entry.
-    "sendconfig r5, 0x1a -> 3\n" // Directory entry.
-    "sendconfig r5, 0x1f -> 3\n" // Directory entry.
+    // Need predicate to be false on core 0 so packet doesn't execute first time
+    // round.
+    "fetchr 0f\n"
+    "setne.p.eop r0, r0, r0\n"
+    // We execute this packet twice to ensure an IPK hit, thus preventing all
+    // fetch during reconfigure sequence. The first time round, pred is false
+    // throughout.
+    "0:\n"
+    // The packet ends with fetch r3; this send tells core 0 where to go. The
+    // other cores all go to loki_sleep (already in r3).
+    "if!p?addui r0, r1, 1f - 0b -> 4\n"
+    "ifp?addui r0, r1, 0f - 0b -> 4\n"
+    "ifp?or r0, r4, r6\n" // Wait.
+    "ifp?or r0, r4, r6\n" // Wait.
+    "ifp?or r0, r4, r6\n" // Wait.
+    "ifp?or r0, r4, r6\n" // Wait.
+    "ifp?sendconfig r0, 0x1c -> 3\n" // Directory mask.
+    "ifp?sendconfig %1, 0x1f -> 3\n" // Directory mask.
+    // First time round we don't want to broadcast the instructions.
+    "ifp?rmtexecute -> 2\n"
+    "ifp?sendconfig r0, 0x17 -> 3\n" // Invalidate all lines.
+    "ifp?sendconfig r5, 0x1a -> 3\n" // Directory entry.
+    "ifp?sendconfig r5, 0x1f -> 3\n" // Directory entry.
+    "ifp?sendconfig r5, 0x1a -> 3\n" // Directory entry.
+    "ifp?sendconfig r5, 0x1f -> 3\n" // Directory entry.
     "fetch.eop r3\n"
+    "1:\n"
+    "fetchr 0b\n"
+    "seteq.p.eop r0, r0, r0\n"
     "0:\n"
   : "=&r"(t0)
   : "r"(value.mask_index)
@@ -453,38 +475,67 @@ void loki_memory_tile_reconfigure(
   int t0;
 
   // Send all the necessary instructions to all cores including this one.
-  // That way no IFetch will be triggered while this code is running.
   //
-  // This is a rather subtle little sequence - be careful when modifying!
+  // The gist of this code is that each cores sends a flush all lines to the
+  // corresponding bank. To determine if this has finished, they then send a
+  // load. Core 0 receives all of these loads, which allows it to act as global
+  // syncrohnisation. Core 0 then reconfigures the directory mask and then each
+  // core changes two directory entries. The data channel can be changed
+  // relatively early (as it's not used by this code) but the instruction
+  // channel must be changed at the last minute once all instruction fetch is
+  // done.
+  //
+  // Once the reconfiguration starts, we must prevent all IFetch, which is done
+  // by ensuring the reconfiguration will be an IPK hit on core 0, and will be
+  // executed form the FIFO on other cores.
   asm volatile (
     "fetchr 0f\n"
+    // Broadcast flush all lines to each core (including this one).
     "rmtexecute -> 2\n"
     "sendconfig r0, 0x15 -> 3\n" // Flush all lines.
     "cregrdi %0, 1\n"
     "andi.p r0, %0, 1\n"
+    // Even banks send result to r4, odd to r6. This avoids filling the buffer
+    // and therefore deadlock.
     "if!p?sendconfig r0, 0x481 -> 3\n" // Ping.
     "ifp?sendconfig  r0, 0x681 -> 3\n" // Ping.
-    "setchmapi.eop 1, r3\n" // Data channel.
-    ".p2align 5\n"
-    /* cache line boundary */
-    ".fill 0x1, 4, 0\n"
+    "setchmapi 1, r3\n" // Data channel.
+    // Need predicate to be true on all cores so ifp? broadcast does execute.
+    "seteq.p.eop r0, r0, r0\n"
     "0:\n"
-    "addui r0, r1, 0f - 0b -> 4\n"
-    "or r0, r4, r6\n" // Wait.
-    "or r0, r4, r6\n" // Wait.
-    "or r0, r4, r6\n" // Wait.
-    "or r0, r4, r6\n" // Wait.
-    "sendconfig r0, 0x1c -> 3\n" // Directory mask. Fetch to next line beats this.
-    "sendconfig %1, 0x1f -> 3\n" // Directory mask.
-    /* cache line boundary */
-    "rmtexecute -> 2\n"
-    "sendconfig r0, 0x17 -> 3\n" // Invalidate all lines.
-    "sendconfig r5, 0x1a -> 3\n" // Directory entry.
-    "sendconfig r5, 0x1f -> 3\n" // Directory entry.
-    "sendconfig r5, 0x1a -> 3\n" // Directory entry.
-    "sendconfig r5, 0x1f -> 3\n" // Directory entry.
-    "setchmapi 0, r3\n" // Instruction channel.
-    "fetch.eop r3\n" // FIXME: Uses old channel 0 :(
+    // Need predicate to be false on core 0 so packet doesn't execute first time
+    // round.
+    "fetchr 0f\n"
+    "setne.p.eop r0, r0, r0\n"
+    // We execute this packet twice to ensure an IPK hit, thus preventing all
+    // fetch during reconfigure sequence. The first time round, pred is false
+    // throughout.
+    "0:\n"
+    // The packet ends with fetch r3; this send tells core 0 where to go. The
+    // other cores all go to loki_sleep (already in r3).
+    "if!p?addui r0, r1, 1f - 0b -> 4\n"
+    "ifp?addui r0, r1, 0f - 0b -> 4\n"
+    "ifp?or r0, r4, r6\n" // Wait.
+    "ifp?or r0, r4, r6\n" // Wait.
+    "ifp?or r0, r4, r6\n" // Wait.
+    "ifp?or r0, r4, r6\n" // Wait.
+    "ifp?sendconfig r0, 0x1c -> 3\n" // Directory mask.
+    "ifp?sendconfig %1, 0x1f -> 3\n" // Directory mask.
+    // First time round we don't want to broadcast the instructions.
+    "ifp?rmtexecute -> 2\n"
+    // First time round, we must resend r3 so it's in the right place.
+    "if!p?or r0, r3, r0 -> 4\n"
+    // Second time round, we set the instruction channel.
+    "ifp?setchmapi 0, r3\n" // Instruction channel.
+    "ifp?sendconfig r0, 0x17 -> 3\n" // Invalidate all lines.
+    "ifp?sendconfig r5, 0x1a -> 3\n" // Directory entry.
+    "ifp?sendconfig r5, 0x1f -> 3\n" // Directory entry.
+    "ifp?sendconfig r5, 0x1a -> 3\n" // Directory entry.
+    "ifp?sendconfig r5, 0x1f -> 3\n" // Directory entry.
+    "fetch.eop r3\n"
+    "1:\n"
+    "fetchr 0b\n"
+    "seteq.p.eop r0, r0, r0\n"
     "0:\n"
   : "=&r"(t0)
   : "r"(directory.mask_index)

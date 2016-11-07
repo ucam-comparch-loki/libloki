@@ -13,6 +13,7 @@ build/%.o: src/%.c $(wildcard include/loki/*.h) | build
 clean:
 	rm -f $(wildcard $(TARGET) *.o)
 	rm -rf $(wildcard lib build)
+	rm -rf $(wildcard html latex)
 
 lib:
 	mkdir $@
