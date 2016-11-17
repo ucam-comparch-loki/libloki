@@ -406,7 +406,8 @@ static inline int loki_test_channel(enum Channels channel) {
     "sendconfig %5, ((" #immediate_payload ") & ~1) -> " #output "\n"\
     "sendconfig %6, ((" #immediate_payload ") & ~1) -> " #output "\n"\
     "sendconfig %7, ((" #immediate_payload ") & ~1) -> " #output "\n"\
-    "sendconfig.eop %8, ((" #immediate_payload ") | 1) -> " #output "\n0:\n"\
+    "sendconfig.eop %8, ((" #immediate_payload ") | 1) -> " #output "\n"\
+    "0:\n"\
     :\
     : "r" ((int)variable0)\
     , "r" ((int)variable1)\
@@ -971,6 +972,32 @@ static inline void loki_channel_memset_cache_line(
   case 12: SENDCONFIG2(address, 0xa, value, 0x1f, 12); return;
   case 13: SENDCONFIG2(address, 0xa, value, 0x1f, 13); return;
   case 14: SENDCONFIG2(address, 0xa, value, 0x1f, 14); return;
+  default: assert(0); __builtin_unreachable();
+  }
+}
+
+//! Send a push cache line operation on the given output channel.
+static inline void loki_channel_push_cache_line(
+  const int channel, void *address,
+  int value0, int value1, int value2, int value3,
+  int value4, int value5, int value6, int value7
+) {
+  switch (channel) {
+  case 0: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 0); return;
+  case 1: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 1); return;
+  case 2: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 2); return;
+  case 3: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 3); return;
+  case 4: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 4); return;
+  case 5: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 5); return;
+  case 6: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 6); return;
+  case 7: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 7); return;
+  case 8: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 8); return;
+  case 9: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 9); return;
+  case 10: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 10); return;
+  case 11: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 11); return;
+  case 12: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 12); return;
+  case 13: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 13); return;
+  case 14: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 14); return;
   default: assert(0); __builtin_unreachable();
   }
 }

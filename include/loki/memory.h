@@ -33,6 +33,7 @@
 #include <loki/channel_io.h>
 #include <loki/types.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 //! Log base 2 of size of the MHL directory.
 #define LOKI_MEMORY_DIRECTORY_SIZE_LOG2 4
@@ -384,5 +385,80 @@ void loki_memory_tile_reconfigure(
 	  loki_memory_cache_configuration_t const cache
 	, loki_memory_directory_configuration_t const directory
 );
+
+
+//! \brief Push a cache line to a remote tile's L1.
+//!
+//! \param channel The memory channel to send the command on. Typically 1 will
+//! work fine, though any channel can be used if desired.
+//! \param address The address of the cache line created in the remote bank.
+//! This should be 32 byte aligned.
+//! \param directory_mask_index The mask_index value from the directory
+//! configuration. (See \ref loki_memory_directory_configuration_t).
+//! \param directory_index The entry in the directory to push to. (See \ref
+//! loki_memory_directory_configuration_t).
+//! \param groupStart The memory configuration of the REMOTE tile.
+//! \param groupSize The memory configuration of the REMOTE tile.
+//! \param value0 The value stored at address + 0.
+//! \param value1 The value stored at address + 4.
+//! \param value2 The value stored at address + 8.
+//! \param value3 The value stored at address + 12.
+//! \param value4 The value stored at address + 16.
+//! \param value5 The value stored at address + 20.
+//! \param value6 The value stored at address + 24.
+//! \param value7 The value stored at address + 28.
+//!
+//! This method updates a remote L1 bank (on a different tile) such that the
+//! cache line at given address has given values. The line will also be a hit
+//! until it is evicted by normal cache replacement policy. The line will be
+//! marked as dirty, so the remote cache will perform a writeback if it evicts
+//! the line.
+//!
+//! In order to address the remote tile, the directory on the current core must
+//! first be configured to map a particular directory entry to the target tile.
+//! This can be done with \ref loki_memory_directory_reconfigure. This method
+//! must also know the remote tile's L1 configuration. In particular, the target
+//! group start and size must be known. This therefore allows pushing to any
+//! group of memory, including for example to a specific private cache.
+//!
+//! Data can also be pushed to remote scratchpads though this is not safe in
+//! general, and could cause a arbitrary writebacks to occur. In particular, no
+//! two push operations can push to the same line of a scratchpad, otherwise a
+//! writeback will be triggered. It would however be safe to push exactly once
+//! to each cache line, then have the remote core run an invalidate all lines
+//! command on the scratchpad to prevent the writeback from ever ocurring.
+//!
+//! This method is not blocking, and will return immediately once the request
+//! has been sent. There is no way for the sending core to know the push has
+//! completed, so the receiver must poll the cache line to determine when
+//! the data has arrived.
+static inline void loki_memory_push_cache_line(
+	  int const channel, void * const address
+	, unsigned char directory_mask_index, unsigned char directory_index
+	, enum Memories const groupStart
+	, enum MemConfigGroupSize const groupSize
+	, int value0, int value1, int value2, int value3
+	, int value4, int value5, int value6, int value7
+) {
+	uint_fast32_t head = (uint_fast32_t)address;
+	assert((head & 0x1f) == 0);
+	head &= ~(0xf << directory_mask_index);
+	head |= (directory_index << directory_mask_index);
+	switch (groupSize) {
+		case GROUPSIZE_1: break;
+		case GROUPSIZE_2: head |= (head >> 5) & 0x01; break;
+		case GROUPSIZE_4: head |= (head >> 5) & 0x03; break;
+		case GROUPSIZE_8: head |= (head >> 5) & 0x07; break;
+		case GROUPSIZE_16: head |= (head >> 5) & 0x0f; break;
+		case GROUPSIZE_32: head |= (head >> 5) & 0x1f; break;
+		default: assert(0); __builtin_unreachable();
+	}
+	loki_channel_push_cache_line(
+		  channel, (void *)head
+		, value0, value1, value2, value3
+		, value4, value5, value6, value7
+	);
+}
+
 
 #endif
