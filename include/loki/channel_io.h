@@ -44,7 +44,7 @@ static inline void loki_send(const int channel, int value) {
   case 12: SEND(value, 12); return;
   case 13: SEND(value, 13); return;
   case 14: SEND(value, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -73,7 +73,7 @@ static inline int loki_receive(const enum Channels channel) {
   case CH_REGISTER_5: RECEIVE(value, 5); return value;
   case CH_REGISTER_6: RECEIVE(value, 6); return value;
   case CH_REGISTER_7: RECEIVE(value, 7); return value;
-  default: assert(0); return 0xdeadbeef;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -124,7 +124,7 @@ static inline void loki_send_words(const int *data, size_t size, int output) {
   case 12: SEND_STRUCT(data, size * 4, 12); return;
   case 13: SEND_STRUCT(data, size * 4, 13); return;
   case 14: SEND_STRUCT(data, size * 4, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 //! \brief Send an entire struct to another core.
@@ -180,7 +180,7 @@ static inline void loki_receive_words(int *data, size_t size, enum Channels inpu
   case CH_REGISTER_5: RECEIVE_STRUCT(data, size * 4, 5); return;
   case CH_REGISTER_6: RECEIVE_STRUCT(data, size * 4, 6); return;
   case CH_REGISTER_7: RECEIVE_STRUCT(data, size * 4, 7); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -233,7 +233,7 @@ static inline void loki_send_interrupt(const int channel) {
   case 12: RMTNXIPK(12); return;
   case 13: RMTNXIPK(13); return;
   case 14: RMTNXIPK(14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -308,7 +308,7 @@ static inline int loki_test_channel(enum Channels channel) {
   case 5: TEST_CHANNEL(result, 3); return result;
   case 6: TEST_CHANNEL(result, 4); return result;
   case 7: TEST_CHANNEL(result, 5); return result;
-  default: assert(0); return -1;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -456,7 +456,7 @@ static inline void loki_channel_load_word(
   case 12: LDW(address, 12); return;
   case 13: LDW(address, 13); return;
   case 14: LDW(address, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -468,7 +468,7 @@ static inline void loki_channel_load_word(
 #define LDL(address, output) {\
   asm (\
     "fetchr 0f\n"\
-    "ldl.eop 0(%0) -> " #output "\n0:\n"\
+    "ldl.eop %0, 0 -> " #output "\n0:\n"\
     :\
     : "r" ((void *)address)\
     : "memory"\
@@ -495,7 +495,7 @@ static inline void loki_channel_load_linked(
   case 12: LDL(address, 12); return;
   case 13: LDL(address, 13); return;
   case 14: LDL(address, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -534,7 +534,7 @@ static inline void loki_channel_load_half_word(
   case 12: LDHWU(address, 12); return;
   case 13: LDHWU(address, 13); return;
   case 14: LDHWU(address, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -573,7 +573,7 @@ static inline void loki_channel_load_byte(
   case 12: LDBU(address, 12); return;
   case 13: LDBU(address, 13); return;
   case 14: LDBU(address, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -595,7 +595,7 @@ static inline void loki_channel_validate_cache_line(const int channel, void *add
   case 12: SENDCONFIG(address, 0xd, 12); return;
   case 13: SENDCONFIG(address, 0xd, 13); return;
   case 14: SENDCONFIG(address, 0xd, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -619,7 +619,7 @@ static inline void loki_channel_prefetch_cache_line(
   case 12: SENDCONFIG(address, 0xf, 12); return;
   case 13: SENDCONFIG(address, 0xf, 13); return;
   case 14: SENDCONFIG(address, 0xf, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -643,7 +643,7 @@ static inline void loki_channel_flush_cache_line(
   case 12: SENDCONFIG(address, 0x11, 12); return;
   case 13: SENDCONFIG(address, 0x11, 13); return;
   case 14: SENDCONFIG(address, 0x11, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -696,7 +696,7 @@ static inline void loki_channel_invalidate_cache_line(
   case 12: SENDCONFIG(address, 0x13, 12); return;
   case 13: SENDCONFIG(address, 0x13, 13); return;
   case 14: SENDCONFIG(address, 0x13, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -737,7 +737,7 @@ static inline void loki_channel_flush_all_lines(
   case 12: SENDCONFIG(address, 0x15, 12); return;
   case 13: SENDCONFIG(address, 0x15, 13); return;
   case 14: SENDCONFIG(address, 0x15, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -761,7 +761,7 @@ static inline void loki_channel_invalidate_all_lines(
   case 12: SENDCONFIG(address, 0x17, 12); return;
   case 13: SENDCONFIG(address, 0x17, 13); return;
   case 14: SENDCONFIG(address, 0x17, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -801,7 +801,7 @@ static inline void loki_channel_store_word(
   case 12: STW(address, value, 12); return;
   case 13: STW(address, value, 13); return;
   case 14: STW(address, value, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -814,7 +814,7 @@ static inline void loki_channel_store_word(
 #define STC(address, variable, output) {\
   asm (\
     "fetchr 0f\n"\
-    "stc.eop %1, 0(%0) -> " #output "\n0:\n"\
+    "stc.eop %1, %0, 0 -> " #output "\n0:\n"\
     :\
     : "r" ((void *)address), "r" ((int)variable)\
     : "memory"\
@@ -841,7 +841,7 @@ static inline void loki_channel_store_conditional(
   case 12: STC(address, value, 12); return;
   case 13: STC(address, value, 13); return;
   case 14: STC(address, value, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -881,7 +881,7 @@ static inline void loki_channel_store_half_word(
   case 12: STHW(address, value, 12); return;
   case 13: STHW(address, value, 13); return;
   case 14: STHW(address, value, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -921,7 +921,7 @@ static inline void loki_channel_store_byte(
   case 12: STB(address, value, 12); return;
   case 13: STB(address, value, 13); return;
   case 14: STB(address, value, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -947,7 +947,7 @@ static inline void loki_channel_store_cache_line(
   case 12: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 12); return;
   case 13: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 13); return;
   case 14: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -971,7 +971,7 @@ static inline void loki_channel_memset_cache_line(
   case 12: SENDCONFIG2(address, 0xa, value, 0x1f, 12); return;
   case 13: SENDCONFIG2(address, 0xa, value, 0x1f, 13); return;
   case 14: SENDCONFIG2(address, 0xa, value, 0x1f, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -1011,7 +1011,7 @@ static inline void loki_channel_load_and_add(
   case 12: LDADD(address, value, 12); return;
   case 13: LDADD(address, value, 13); return;
   case 14: LDADD(address, value, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -1051,7 +1051,7 @@ static inline void loki_channel_load_and_or(
   case 12: LDOR(address, value, 12); return;
   case 13: LDOR(address, value, 13); return;
   case 14: LDOR(address, value, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -1091,7 +1091,7 @@ static inline void loki_channel_load_and_and(
   case 12: LDAND(address, value, 12); return;
   case 13: LDAND(address, value, 13); return;
   case 14: LDAND(address, value, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -1131,7 +1131,7 @@ static inline void loki_channel_load_and_xor(
   case 12: LDXOR(address, value, 12); return;
   case 13: LDXOR(address, value, 13); return;
   case 14: LDXOR(address, value, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -1171,7 +1171,7 @@ static inline void loki_channel_exchange(
   case 12: EXCHANGE(address, value, 12); return;
   case 13: EXCHANGE(address, value, 13); return;
   case 14: EXCHANGE(address, value, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -1195,7 +1195,7 @@ static inline void loki_channel_update_directory_entry(
   case 12: SENDCONFIG2(address, 0x1a, value, 0x1f, 12); return;
   case 13: SENDCONFIG2(address, 0x1a, value, 0x1f, 13); return;
   case 14: SENDCONFIG2(address, 0x1a, value, 0x1f, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 
@@ -1219,7 +1219,7 @@ static inline void loki_channel_update_directory_mask(
   case 12: SENDCONFIG2(address, 0x1c, value, 0x1f, 12); return;
   case 13: SENDCONFIG2(address, 0x1c, value, 0x1f, 13); return;
   case 14: SENDCONFIG2(address, 0x1c, value, 0x1f, 14); return;
-  default: assert(0); return;
+  default: assert(0); __builtin_unreachable();
   }
 }
 

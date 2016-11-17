@@ -60,7 +60,7 @@ static inline unsigned long get_control_register(enum ControlRegisters id) {
   case CR_CR11:           GET_CONTROL_REGISTER(value, 11); return value;
   case CR_CR12:           GET_CONTROL_REGISTER(value, 12); return value;
   case CR_CR13:           GET_CONTROL_REGISTER(value, 13); return value;
-  default:                assert(0);                       return 0xdeadbeef;
+  default:                assert(0); __builtin_unreachable();
   }
 }
 
@@ -93,7 +93,7 @@ static inline void set_control_register(enum ControlRegisters id, unsigned long 
   case CR_CR11:           SET_CONTROL_REGISTER(value, 11); return;
   case CR_CR12:           SET_CONTROL_REGISTER(value, 12); return;
   case CR_CR13:           SET_CONTROL_REGISTER(value, 13); return;
-  default:                assert(0);                       return;
+  default:                assert(0); __builtin_unreachable();
   }
 }
 
