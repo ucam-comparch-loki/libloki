@@ -135,7 +135,7 @@ void loki_init(init_config* config) {
 
   // Give each core connections to memory and a stack.
   if (config->cores > 1) {
-    loki_flush_data(1, config, sizeof(init_config));
+    loki_channel_flush_data(1, config, sizeof(init_config));
     unsigned int tile;
     for (tile = 1; tile*CORES_PER_TILE < config->cores; tile++) {
       init_remote_tile(int2tile(tile), config);
@@ -691,8 +691,8 @@ static void distribute_to_local_tile(const distributed_func_internal *internal) 
   // Invalidate all data and refetch it to ensure it is up-to-date if we are on
   // a different tile.
   if (get_tile_id() != internal->first_tile) {
-    loki_invalidate_data(1, config, sizeof(distributed_func));
-    loki_invalidate_data(1, config->data, config->data_size);
+    loki_channel_invalidate_data(1, config, sizeof(distributed_func));
+    loki_channel_invalidate_data(1, config->data, config->data_size);
   }
 
   // Make multicast connections to all other members of the SIMD group.
@@ -746,9 +746,9 @@ void loki_execute(const distributed_func* config) {
     internal->first_tile = get_tile_id();
 
     // Flush the configuration data so it is accessible to the remote tiles.
-    loki_flush_data(1, internal, sizeof(distributed_func_internal));
-    loki_flush_data(1, config, sizeof(distributed_func));
-    loki_flush_data(1, config->data, config->data_size);
+    loki_channel_flush_data(1, internal, sizeof(distributed_func_internal));
+    loki_channel_flush_data(1, config, sizeof(distributed_func));
+    loki_channel_flush_data(1, config->data, config->data_size);
 
     int tile;
     int thisTile = tile2int(get_tile_id());
@@ -1493,7 +1493,7 @@ void loki_spawn(void* func, const channel_t address, const int argc, ...) {
 
 void refresh_args_before_call(void *func(void*), void* args, size_t arg_size) {
   // Force the arguments to be fetched again, so they are up to date.
-  loki_invalidate_data(1, args, arg_size);
+  loki_channel_invalidate_data(1, args, arg_size);
   func(args);
 }
 

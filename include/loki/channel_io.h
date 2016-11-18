@@ -655,7 +655,7 @@ static inline void loki_channel_flush_cache_line(
 //!
 //! This implementation also waits until the flush is complete, so is not
 //! suitable for multiple quick flushes in succession.
-static inline void loki_flush_data(
+static inline void loki_channel_flush_data(
   const int channel, void const *address, size_t size
 ) {
   char* cacheLine = (char*)((int)address & ~0x1f);
@@ -707,7 +707,7 @@ static inline void loki_channel_invalidate_cache_line(
 //! Invalidate as many cache lines as are necessary to capture the whole
 //! requested region. Any other data which happens to share these lines will be
 //! lost.
-static inline void loki_invalidate_data(
+static inline void loki_channel_invalidate_data(
   const int channel, void const *address, size_t size
 ) {
   char* cacheLine = (char*)((int)address & ~0x1f);
@@ -973,6 +973,33 @@ static inline void loki_channel_memset_cache_line(
   case 13: SENDCONFIG2(address, 0xa, value, 0x1f, 13); return;
   case 14: SENDCONFIG2(address, 0xa, value, 0x1f, 14); return;
   default: assert(0); __builtin_unreachable();
+  }
+}
+
+//! \brief Starting at `address`, set the following `size` words to `value`.
+static inline void loki_channel_memset_words(
+  const int channel, void* address, int value, size_t size
+) {
+  int* dataPtr = address;
+  int* endData = dataPtr + size;
+  
+  // Special case if everything fits entirely within one cache line.
+  if (((int)dataPtr & ~0x1f) == ((int)endData & ~0x1f)) {
+    for ( ; dataPtr < endData; dataPtr++)
+      loki_channel_store_word(channel, dataPtr, value);
+  }
+  else {
+    // Store individual words up to the next cache line boundary.
+    for ( ; ((int)dataPtr & 0x1f) != 0; dataPtr++)
+      loki_channel_store_word(channel, dataPtr, value);
+    
+    // Set entire cache lines.
+    for ( ; dataPtr + 8 < endData; dataPtr += 8)
+      loki_channel_memset_cache_line(channel, dataPtr, value);
+    
+    // Store individual words for the final part of a cache line.
+    for ( ; dataPtr < endData; dataPtr++)
+      loki_channel_store_word(channel, dataPtr, value);
   }
 }
 
