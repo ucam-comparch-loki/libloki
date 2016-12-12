@@ -506,12 +506,12 @@ static inline void loki_cache_flush_all_lines(void) {
 
 //! \brief Invalidate all lines from a given cache group.
 //!
-//! \param channel The memory channel to send the command on. Typically 1 will
-//! work fine, though any channel can be used if desired.
+//! \param channel The memory channel to send the command on.
 //! \param groupSize The memory configuration of the cache group.
 //!
 //! \warning Doesn't flush the lines first. Make sure they're not dirty if you
-//! need coherency.
+//! need coherency. It is almost never safe to call this method on channel 1 as
+//! you would need to prevent the compiler generating any memory operations.
 static inline void loki_cache_invalidate_all_lines_ex(
 	  int const channel
 	, enum MemConfigGroupSize const groupSize
@@ -522,19 +522,6 @@ static inline void loki_cache_invalidate_all_lines_ex(
 	}
 }
 
-//! \brief Flush all lines from the channel 1 cache group.
-//!
-//! Will not return until all data has left the tile (though not necessarily
-//! after it arrives at its destination).
-//!
-//! \remark Reads the channel map table to determine cache configuration.
-//!
-//! \warning Doesn't flush the lines first. Make sure they're not dirty if you
-//! need coherency.
-static inline void loki_cache_invalidate_all_lines(void) {
-	loki_cache_invalidate_all_lines_ex(1, loki_channel_memory_get_group_size(get_channel_map(1)));
-}
-
 //! \brief Flush all lines from the channel 0 cache group.
 //!
 //! Will not return until all data has left the tile (though not necessarily
@@ -542,10 +529,89 @@ static inline void loki_cache_invalidate_all_lines(void) {
 //!
 //! \remark Reads the channel map table to determine cache configuration.
 //!
-//! \warning Doesn't flush the lines first. Make sure they're not dirty if you
-//! need coherency and have shared icache/dcache.
+//! \warning Doesn't flush the lines first. It's almost never safe to call this
+//! method if channel 1 and channel 0 share banks as you would need to prevent
+//! the compiler generating memory operations.
 static inline void loki_cache_invalidate_all_lines_icache(void) {
 	loki_cache_invalidate_all_lines_ex(0, loki_channel_memory_get_group_size(get_channel_map(0)));
+}
+
+//! \brief Flush and invalidate all lines from a given cache group.
+//!
+//! \param channel The memory channel to send the command on. Typically 1 will
+//! work fine, though any channel can be used if desired.
+//! \param groupSize The memory configuration of the cache group.
+//!
+//! Will not return until all data has left the tile (though not necessarily
+//! after it arrives at its destination).
+//!
+//! Use \ref loki_cache_flush_and_invalidate_all_lines_ex instead where possible.
+#define LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(channel, groupSize) do {\
+	asm volatile (\
+		"fetchr 0f\n"\
+		"mov.eop %1, %0\n"\
+		".p2align 5\n"\
+		"0:\n"\
+		"addui.p %1, %1, -1\n"\
+		"psel.fetchr 0b, 0f\n"\
+		"sendconfig %2, 0x15 -> %4\n"\
+		"sendconfig %2, 0x17 -> %4\n"\
+		"sendconfig %2, 0x281 -> %4\n"\
+		"addu.eop %2, %2, %3\n"\
+		"0:\n"\
+		"fetchr 0f\n"\
+		"mov.eop %1, %0\n"\
+		"0:\n"\
+		"addui.p %1, %1, -1\n"\
+		"psel.fetchr 0b, 0f\n"\
+		"mov.eop r0, r2\n"\
+		"0:\n"\
+		:\
+		: "r" ((1<<(groupSize))-1), "r"(groupSize), "r"(0), "r"(0x2020), "i"(channel)\
+		: "memory"\
+	);\
+} while (0)
+
+//! \brief Flush and invalidate all lines from a given cache group.
+//!
+//! \param channel The memory channel to send the command on. Typically 1 will
+//! work fine, though any channel can be used if desired.
+//! \param groupSize The memory configuration of the cache group.
+//!
+//! Will not return until all data has left the tile (though not necessarily
+//! after it arrives at its destination).
+static inline void loki_cache_flush_and_invalidate_all_lines_ex(
+	  int const channel
+	, enum MemConfigGroupSize const groupSize
+) {
+	switch (channel) {
+	case 0: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(0, groupSize); return;
+	case 1: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(1, groupSize); return;
+	case 2: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(2, groupSize); return;
+	case 3: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(3, groupSize); return;
+	case 4: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(4, groupSize); return;
+	case 5: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(5, groupSize); return;
+	case 6: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(6, groupSize); return;
+	case 7: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(7, groupSize); return;
+	case 8: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(8, groupSize); return;
+	case 9: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(9, groupSize); return;
+	case 10: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(10, groupSize); return;
+	case 11: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(11, groupSize); return;
+	case 12: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(12, groupSize); return;
+	case 13: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(13, groupSize); return;
+	case 14: LOKI_CACHE_FLUSH_AND_INVALIDATE_ALL_LINES_EX(14, groupSize); return;
+	default: assert(0); __builtin_unreachable();
+	}
+}
+
+//! \brief Flush and invalidate all lines from the channel 1 cache group.
+//!
+//! Will not return until all data has left the tile (though not necessarily
+//! after it arrives at its destination).
+//!
+//! \remark Reads the channel map table to determine cache configuration.
+static inline void loki_cache_flush_and_invalidate_all_lines(void) {
+	loki_cache_flush_and_invalidate_all_lines_ex(1, loki_channel_memory_get_group_size(get_channel_map(1)));
 }
 
 #endif
