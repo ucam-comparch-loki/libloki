@@ -460,5 +460,92 @@ static inline void loki_memory_push_cache_line(
 	);
 }
 
+//! \brief Flush all lines from a given cache group.
+//!
+//! \param channel The memory channel to send the command on. Typically 1 will
+//! work fine, though any channel can be used if desired.
+//! \param groupSize The memory configuration of the cache group.
+//!
+//! Will not return until all data has left the tile (though not necessarily
+//! after it arrives at its destination).
+static inline void loki_cache_flush_all_lines_ex(
+	  int const channel
+	, enum MemConfigGroupSize const groupSize
+) {
+	int const iterations = 1 << (int)groupSize;
+	for (int i = 0; i < iterations; i++) {
+		loki_channel_flush_all_lines(channel, (void *)(i * 0x2020));
+	}
+	for (int i = 0; i < iterations; i++) {
+		asm volatile (
+			/* sendconfig to ensure ret channel is 2 and spad mode
+			 * to avoid actually fetching the address. */
+			/* Not fully general, since it doesn't assure return
+			 * core is this core, but that's not the common case! */
+			"sendconfig %0, 0x281 -> 1\n"
+			"fetchr 0f\n"
+			"or.eop r0, r2, r0\n"
+			"0:\n"
+			:
+			: "r" (i*0x20)
+			: "memory"
+		);
+	}
+}
+
+//! \brief Flush all lines from the channel 1 cache group.
+//!
+//! Will not return until all data has left the tile (though not necessarily
+//! after it arrives at its destination).
+//!
+//! \remark Reads the channel map table to determine cache configuration.
+static inline void loki_cache_flush_all_lines(void) {
+	loki_cache_flush_all_lines_ex(1, loki_channel_memory_get_group_size(get_channel_map(1)));
+}
+
+
+//! \brief Invalidate all lines from a given cache group.
+//!
+//! \param channel The memory channel to send the command on. Typically 1 will
+//! work fine, though any channel can be used if desired.
+//! \param groupSize The memory configuration of the cache group.
+//!
+//! \warning Doesn't flush the lines first. Make sure they're not dirty if you
+//! need coherency.
+static inline void loki_cache_invalidate_all_lines_ex(
+	  int const channel
+	, enum MemConfigGroupSize const groupSize
+) {
+	int const iterations = 1 << (int)groupSize;
+	for (int i = 0; i < iterations; i++) {
+		loki_channel_invalidate_all_lines(channel, (void *)(i * 0x2020));
+	}
+}
+
+//! \brief Flush all lines from the channel 1 cache group.
+//!
+//! Will not return until all data has left the tile (though not necessarily
+//! after it arrives at its destination).
+//!
+//! \remark Reads the channel map table to determine cache configuration.
+//!
+//! \warning Doesn't flush the lines first. Make sure they're not dirty if you
+//! need coherency.
+static inline void loki_cache_invalidate_all_lines(void) {
+	loki_cache_invalidate_all_lines_ex(1, loki_channel_memory_get_group_size(get_channel_map(1)));
+}
+
+//! \brief Flush all lines from the channel 0 cache group.
+//!
+//! Will not return until all data has left the tile (though not necessarily
+//! after it arrives at its destination).
+//!
+//! \remark Reads the channel map table to determine cache configuration.
+//!
+//! \warning Doesn't flush the lines first. Make sure they're not dirty if you
+//! need coherency and have shared icache/dcache.
+static inline void loki_cache_invalidate_all_lines_icache(void) {
+	loki_cache_invalidate_all_lines_ex(0, loki_channel_memory_get_group_size(get_channel_map(0)));
+}
 
 #endif

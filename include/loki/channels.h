@@ -221,6 +221,16 @@ static inline channel_t loki_core_address_ex(
       );
 }
 
+//! \brief Extract the group size from a memory chnanel.
+//! \param channel The channel value to extract from. This must be a memory
+//!        channel.
+static inline enum MemConfigGroupSize loki_channel_memory_get_group_size(
+    const channel_t channel
+) {
+  assert((channel & 0x3) == 2);
+  return (enum MemConfigGroupSize)((channel >> 11) & 0x3);
+}
+
 /* Historically this header included these, so we continue to do so for
  * compatibility. */
 
