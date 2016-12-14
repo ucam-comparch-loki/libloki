@@ -1,4 +1,5 @@
 #include <loki/lokilib.h>
+#include <loki/sendconfig.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -342,11 +343,11 @@ void loki_memory_cache_reconfigure(
   asm volatile (
     "fetchr 0f\n"
     "rmtexecute -> 2\n"
-    "sendconfig r0, 0x15 -> 3\n" // Flush all lines.
+    "sendconfig r0, %1 -> 3\n" // Flush all lines.
     "cregrdi %0, 1\n"
     "andi.p r0, %0, 1\n"
-    "if!p?sendconfig r0, 0x481 -> 3\n" // Ping.
-    "ifp?sendconfig  r0, 0x681 -> 3\n" // Ping.
+    "if!p?sendconfig r0, %2 -> 3\n" // Ping.
+    "ifp?sendconfig  r0, %3 -> 3\n" // Ping.
     "nor.eop r0, r0, r0\n"
     "0:\n" // Since all other cores idle, at this point all banks are flusing.
     "addui r0, r1, 0f - 0b -> 4\n"
@@ -358,11 +359,14 @@ void loki_memory_cache_reconfigure(
     "setchmapi 1, r3\n" // Data channel.
     "setchmapi 0, r3\n" // Instruction channel.
     "nor r0, r0, r0\n"
-    "sendconfig r0, 0x17 -> 3\n" // Invalidate all lines.
+    "sendconfig r0, %4 -> 3\n" // Invalidate all lines.
     "fetch.eop r3\n"
     "0:\n"
   : "=&r"(t0)
-  :
+  : "n" (SC_FLUSH_ALL_LINES),
+    "n" (SC_RETURN_TO_R4 | SC_L1_SCRATCHPAD | SC_LOAD_WORD),
+    "n" (SC_RETURN_TO_R6 | SC_L1_SCRATCHPAD | SC_LOAD_WORD),
+    "n" (SC_INVALIDATE_ALL_LINES)
   : "memory"
   );
 }
@@ -404,13 +408,13 @@ void loki_memory_directory_reconfigure(
     "fetchr 0f\n"
     // Broadcast flush all lines to each core (including this one).
     "rmtexecute -> 2\n"
-    "sendconfig r0, 0x15 -> 3\n" // Flush all lines.
+    "sendconfig r0, %2 -> 3\n" // Flush all lines.
     "cregrdi %0, 1\n"
     "andi.p r0, %0, 1\n"
     // Even banks send result to r4, odd to r6. This avoids filling the buffer
     // and therefore deadlock.
-    "if!p?sendconfig r0, 0x481 -> 3\n" // Ping.
-    "ifp?sendconfig  r0, 0x681 -> 3\n" // Ping.
+    "if!p?sendconfig r0, %3 -> 3\n" // Ping.
+    "ifp?sendconfig  r0, %4 -> 3\n" // Ping.
     // Need predicate to be true on all cores so ifp? broadcast does execute.
     "seteq.p.eop r0, r0, r0\n"
     "0:\n"
@@ -430,22 +434,26 @@ void loki_memory_directory_reconfigure(
     "ifp?or r0, r4, r6\n" // Wait.
     "ifp?or r0, r4, r6\n" // Wait.
     "ifp?or r0, r4, r6\n" // Wait.
-    "ifp?sendconfig r0, 0x1c -> 3\n" // Directory mask.
-    "ifp?sendconfig %1, 0x1f -> 3\n" // Directory mask.
+    "ifp?sendconfig r0, %6 -> 3\n" // Directory mask.
+    "ifp?sendconfig %1, %7 -> 3\n" // Directory mask.
     // First time round we don't want to broadcast the instructions.
     "ifp?rmtexecute -> 2\n"
-    "ifp?sendconfig r0, 0x17 -> 3\n" // Invalidate all lines.
-    "ifp?sendconfig r5, 0x1a -> 3\n" // Directory entry.
-    "ifp?sendconfig r5, 0x1f -> 3\n" // Directory entry.
-    "ifp?sendconfig r5, 0x1a -> 3\n" // Directory entry.
-    "ifp?sendconfig r5, 0x1f -> 3\n" // Directory entry.
+    "ifp?sendconfig r0, %5 -> 3\n" // Invalidate all lines.
+    "ifp?sendconfig r5, %8 -> 3\n" // Directory entry.
+    "ifp?sendconfig r5, %7 -> 3\n" // Directory entry.
+    "ifp?sendconfig r5, %8 -> 3\n" // Directory entry.
+    "ifp?sendconfig r5, %7 -> 3\n" // Directory entry.
     "fetch.eop r3\n"
     "1:\n"
     "fetchr 0b\n"
     "seteq.p.eop r0, r0, r0\n"
     "0:\n"
   : "=&r"(t0)
-  : "r"(value.mask_index)
+  : "r"(value.mask_index), "n" (SC_FLUSH_ALL_LINES),
+    "n" (SC_RETURN_TO_R4 | SC_L1_SCRATCHPAD | SC_LOAD_WORD),
+    "n" (SC_RETURN_TO_R6 | SC_L1_SCRATCHPAD | SC_LOAD_WORD),
+    "n" (SC_INVALIDATE_ALL_LINES), "n" (SC_UPDATE_DIRECTORY_MASK),
+    "n" (SC_PAYLOAD_EOP), "n" (SC_UPDATE_DIRECTORY_ENTRY)
   : "memory"
   );
 }
@@ -492,13 +500,13 @@ void loki_memory_tile_reconfigure(
     "fetchr 0f\n"
     // Broadcast flush all lines to each core (including this one).
     "rmtexecute -> 2\n"
-    "sendconfig r0, 0x15 -> 3\n" // Flush all lines.
+    "sendconfig r0, %2 -> 3\n" // Flush all lines.
     "cregrdi %0, 1\n"
     "andi.p r0, %0, 1\n"
     // Even banks send result to r4, odd to r6. This avoids filling the buffer
     // and therefore deadlock.
-    "if!p?sendconfig r0, 0x481 -> 3\n" // Ping.
-    "ifp?sendconfig  r0, 0x681 -> 3\n" // Ping.
+    "if!p?sendconfig r0, %3 -> 3\n" // Ping.
+    "ifp?sendconfig  r0, %4 -> 3\n" // Ping.
     "setchmapi 1, r3\n" // Data channel.
     // Need predicate to be true on all cores so ifp? broadcast does execute.
     "seteq.p.eop r0, r0, r0\n"
@@ -519,26 +527,30 @@ void loki_memory_tile_reconfigure(
     "ifp?or r0, r4, r6\n" // Wait.
     "ifp?or r0, r4, r6\n" // Wait.
     "ifp?or r0, r4, r6\n" // Wait.
-    "ifp?sendconfig r0, 0x1c -> 3\n" // Directory mask.
-    "ifp?sendconfig %1, 0x1f -> 3\n" // Directory mask.
+    "ifp?sendconfig r0, %6 -> 3\n" // Directory mask.
+    "ifp?sendconfig %1, %7 -> 3\n" // Directory mask.
     // First time round we don't want to broadcast the instructions.
     "ifp?rmtexecute -> 2\n"
     // First time round, we must resend r3 so it's in the right place.
     "if!p?or r0, r3, r0 -> 4\n"
     // Second time round, we set the instruction channel.
     "ifp?setchmapi 0, r3\n" // Instruction channel.
-    "ifp?sendconfig r0, 0x17 -> 3\n" // Invalidate all lines.
-    "ifp?sendconfig r5, 0x1a -> 3\n" // Directory entry.
-    "ifp?sendconfig r5, 0x1f -> 3\n" // Directory entry.
-    "ifp?sendconfig r5, 0x1a -> 3\n" // Directory entry.
-    "ifp?sendconfig r5, 0x1f -> 3\n" // Directory entry.
+    "ifp?sendconfig r0, %5 -> 3\n" // Invalidate all lines.
+    "ifp?sendconfig r5, %8 -> 3\n" // Directory entry.
+    "ifp?sendconfig r5, %7 -> 3\n" // Directory entry.
+    "ifp?sendconfig r5, %8 -> 3\n" // Directory entry.
+    "ifp?sendconfig r5, %7 -> 3\n" // Directory entry.
     "fetch.eop r3\n"
     "1:\n"
     "fetchr 0b\n"
     "seteq.p.eop r0, r0, r0\n"
     "0:\n"
   : "=&r"(t0)
-  : "r"(directory.mask_index)
+  : "r"(directory.mask_index), "n" (SC_FLUSH_ALL_LINES),
+    "n" (SC_RETURN_TO_R4 | SC_L1_SCRATCHPAD | SC_LOAD_WORD),
+    "n" (SC_RETURN_TO_R6 | SC_L1_SCRATCHPAD | SC_LOAD_WORD),
+    "n" (SC_INVALIDATE_ALL_LINES), "n" (SC_UPDATE_DIRECTORY_MASK),
+    "n" (SC_PAYLOAD_EOP), "n" (SC_UPDATE_DIRECTORY_ENTRY)
   : "memory"
   );
 }

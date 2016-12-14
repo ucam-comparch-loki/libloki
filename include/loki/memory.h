@@ -31,6 +31,7 @@
 
 #include <assert.h>
 #include <loki/channel_io.h>
+#include <loki/sendconfig.h>
 #include <loki/types.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -482,12 +483,12 @@ static inline void loki_cache_flush_all_lines_ex(
 			 * to avoid actually fetching the address. */
 			/* Not fully general, since it doesn't assure return
 			 * core is this core, but that's not the common case! */
-			"sendconfig %0, 0x281 -> 1\n"
+			"sendconfig %0, %1 -> 1\n"
 			"fetchr 0f\n"
 			"or.eop r0, r2, r0\n"
 			"0:\n"
 			:
-			: "r" (i*0x20)
+			: "r" (i*0x20), "n" (SC_RETURN_TO_R2 | SC_L1_SCRATCHPAD | SC_LOAD_WORD)
 			: "memory"
 		);
 	}
@@ -554,9 +555,9 @@ static inline void loki_cache_invalidate_all_lines_icache(void) {
 		"0:\n"\
 		"addui.p %1, %1, -1\n"\
 		"psel.fetchr 0b, 0f\n"\
-		"sendconfig %2, 0x15 -> %4\n"\
-		"sendconfig %2, 0x17 -> %4\n"\
-		"sendconfig %2, 0x281 -> %4\n"\
+		"sendconfig %2, %5 -> %4\n"\
+		"sendconfig %2, %6 -> %4\n"\
+		"sendconfig %2, %7 -> %4\n"\
 		"addu.eop %2, %2, %3\n"\
 		"0:\n"\
 		"fetchr 0f\n"\
@@ -567,7 +568,9 @@ static inline void loki_cache_invalidate_all_lines_icache(void) {
 		"mov.eop r0, r2\n"\
 		"0:\n"\
 		:\
-		: "r" ((1<<(groupSize))-1), "r"(groupSize), "r"(0), "r"(0x2020), "i"(channel)\
+		: "r" ((1<<(groupSize))-1), "r"(groupSize), "r"(0), "r"(0x2020), "i"(channel),\
+		  "n" (SC_FLUSH_ALL_LINES), "n" (SC_INVALIDATE_ALL_LINES),\
+		  "n" (SC_RETURN_TO_R2 | SC_L1_SCRATCHPAD | SC_LOAD_WORD)\
 		: "memory"\
 	);\
 } while (0)

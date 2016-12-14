@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 #include <loki/channel_io.h>
+#include <loki/sendconfig.h>
 
 // Vector types.
 
@@ -904,7 +905,7 @@ static inline v16int16_t loki_load_v16int16_t(
 		"fetchr.eop 0f\n"
 		".p2align 5\n"
 		"0:\n"
-		"sendconfig %[address], 0x9 -> 1\n"
+		"sendconfig %[address], %17 -> 1\n"
 		"fetchr 0f\n"
 		"or %1, r2, r0\n"
 		"or %3, r2, r0\n"
@@ -943,7 +944,7 @@ static inline v16int16_t loki_load_v16int16_t(
 	, "=r"(result[ 4]), "=r"(result[ 5]), "=r"(result[ 6]), "=r"(result[ 7])
 	, "=r"(result[ 8]), "=r"(result[ 9]), "=r"(result[10]), "=r"(result[11])
 	, "=r"(result[12]), "=r"(result[13]), "=r"(result[14]), "=r"(result[15])
-	: [address] "r"(address)
+	: [address] "r"(address), "n" (SC_FETCH_LINE)
 	: "memory"
 	);
 	return result;
@@ -1157,7 +1158,7 @@ static inline v8int32_t loki_load_v8int32_t(
 		"fetchr.eop 0f\n"
 		".p2align 5\n"
 		"0:\n"
-		"sendconfig %[address], 0x9 -> 1\n"
+		"sendconfig %[address], %9 -> 1\n"
 		"fetchr 0f\n"
 		"or %0, r2, r0\n"
 		"or %1, r2, r0\n"
@@ -1170,7 +1171,7 @@ static inline v8int32_t loki_load_v8int32_t(
 		"0:\n"
 	: "=r"(result[0]), "=r"(result[1]), "=r"(result[2]), "=r"(result[3])
 	, "=r"(result[4]), "=r"(result[5]), "=r"(result[6]), "=r"(result[7])
-	: [address] "r"(address)
+	: [address] "r"(address), "n" (SC_FETCH_LINE)
 	: "memory"
 	);
 	return result;
@@ -1239,7 +1240,7 @@ static inline v8uint32_t loki_load_v8uint32_t(
 		"fetchr.eop 0f\n"
 		".p2align 5\n"
 		"0:\n"
-		"sendconfig %[address], 0x9 -> 1\n"
+		"sendconfig %[address], %9 -> 1\n"
 		"fetchr 0f\n"
 		"or %0, r2, r0\n"
 		"or %1, r2, r0\n"
@@ -1252,7 +1253,7 @@ static inline v8uint32_t loki_load_v8uint32_t(
 		"0:\n"
 	: "=r"(result[0]), "=r"(result[1]), "=r"(result[2]), "=r"(result[3])
 	, "=r"(result[4]), "=r"(result[5]), "=r"(result[6]), "=r"(result[7])
-	: [address] "r"(address)
+	: [address] "r"(address), "n" (SC_FETCH_LINE)
 	: "memory"
 	);
 	return result;

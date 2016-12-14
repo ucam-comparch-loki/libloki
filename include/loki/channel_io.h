@@ -8,6 +8,7 @@
 #include <loki/channels.h>
 #include <loki/channel_map_table.h>
 #include <loki/control_registers.h>
+#include <loki/sendconfig.h>
 #include <loki/types.h>
 #include <string.h>
 
@@ -312,18 +313,35 @@ static inline int loki_test_channel(enum Channels channel) {
   }
 }
 
+// Internal implementation - forces macro expansion.
+#define SENDCONFIGi(variable, immediate, output) {\
+  asm (\
+    "fetchr 0f\n"\
+    "sendconfig.eop %0, " #immediate " -> " #output "\n0:\n"\
+    :\
+    : "r" ((int)variable)\
+    : "memory"\
+  );\
+}
+
 //! \brief Sendconfig the value of the named variable on the given output channel.
 //! \param variable value to send.
 //! \param immediate out of band bits for message, must be an integer literal.
 //! \param output must be an integer literal.
 //!
 //! Use functions instead of this macro where possible.
-#define SENDCONFIG(variable, immediate, output) {\
+#define SENDCONFIG(variable, immediate, output) SENDCONFIGi(variable, immediate, output)
+
+// Internal implementation - forces macro expansion.
+#define SENDCONFIG2i(variable0, immediate0, variable1, immediate1, output) {\
   asm (\
+     /* No special care needed - IFetch always emits both sendconfig
+      * instructions before either complete. */ \
     "fetchr 0f\n"\
-    "sendconfig.eop %0, " #immediate " -> " #output "\n0:\n"\
+    "sendconfig %0, " #immediate0 " -> " #output "\n"\
+    "sendconfig.eop %1, ((" #immediate1 ") | 1) -> " #output "\n0:\n"\
     :\
-    : "r" ((int)variable)\
+    : "r" ((int)variable0), "r" ((int)variable1)\
     : "memory"\
   );\
 }
@@ -341,41 +359,10 @@ static inline int loki_test_channel(enum Channels channel) {
 //!
 //! This function is guaranteed not to cause deadlock even in the case that the
 //! instruction memory bank is the target for the secondfig.
-#define SENDCONFIG2(variable0, immediate0, variable1, immediate1, output) {\
-  asm (\
-     /* No special care needed - IFetch always emits both sendconfig
-      * instructions before either complete. */ \
-    "fetchr 0f\n"\
-    "sendconfig %0, " #immediate0 " -> " #output "\n"\
-    "sendconfig.eop %1, ((" #immediate1 ") | 1) -> " #output "\n0:\n"\
-    :\
-    : "r" ((int)variable0), "r" ((int)variable1)\
-    : "memory"\
-  );\
-}
+#define SENDCONFIG2(variable0, immediate0, variable1, immediate1, output) SENDCONFIG2i(variable0, immediate0, variable1, immediate1, output)
 
-//! \brief Sendconfig 9 words to form a flit.
-//! \param variable0 value to send first.
-//! \param immediate_head out of band bits for first flit, must be an integer
-//!                       literal.
-//! \param variable1 value to send second.
-//! \param variable2 value to send third.
-//! \param variable3 value to send fourth.
-//! \param variable4 value to send fifth.
-//! \param variable5 value to send sixth.
-//! \param variable6 value to send seventh.
-//! \param variable7 value to send eight.
-//! \param variable8 value to send ninth.
-//! \param immediate_payload out of band bits for remaining messages, must be
-//!                          an integer literal. This macro forces the tail bit
-//!                          to be set only on the last flit.
-//! \param output must be an integer literal.
-//!
-//! Use functions instead of this macro where possible.
-//!
-//! This function is guaranteed not to cause deadlock even in the case that the
-//! instruction memory bank is the target for the secondfig.
-#define SENDCONFIG9( \
+// Internal implementation - forces macro expansion.
+#define SENDCONFIG9i( \
     variable0 \
   , immediate_head \
   , variable1 \
@@ -421,6 +408,55 @@ static inline int loki_test_channel(enum Channels channel) {
     : "memory"\
   );\
 }
+
+//! \brief Sendconfig 9 words to form a flit.
+//! \param variable0 value to send first.
+//! \param immediate_head out of band bits for first flit, must be an integer
+//!                       literal.
+//! \param variable1 value to send second.
+//! \param variable2 value to send third.
+//! \param variable3 value to send fourth.
+//! \param variable4 value to send fifth.
+//! \param variable5 value to send sixth.
+//! \param variable6 value to send seventh.
+//! \param variable7 value to send eight.
+//! \param variable8 value to send ninth.
+//! \param immediate_payload out of band bits for remaining messages, must be
+//!                          an integer literal. This macro forces the tail bit
+//!                          to be set only on the last flit.
+//! \param output must be an integer literal.
+//!
+//! Use functions instead of this macro where possible.
+//!
+//! This function is guaranteed not to cause deadlock even in the case that the
+//! instruction memory bank is the target for the secondfig.
+#define SENDCONFIG9( \
+    variable0 \
+  , immediate_head \
+  , variable1 \
+  , variable2 \
+  , variable3 \
+  , variable4 \
+  , variable5 \
+  , variable6 \
+  , variable7 \
+  , variable8 \
+  , immediate_payload \
+  , output \
+) SENDCONFIG9i( \
+    variable0 \
+  , immediate_head \
+  , variable1 \
+  , variable2 \
+  , variable3 \
+  , variable4 \
+  , variable5 \
+  , variable6 \
+  , variable7 \
+  , variable8 \
+  , immediate_payload \
+  , output \
+)
 
 //! \brief Send load word command at given address on the given output channel.
 //! \param address address to send.
@@ -581,21 +617,21 @@ static inline void loki_channel_load_byte(
 //! Send a validate cache line memory operation on a given output channel.
 static inline void loki_channel_validate_cache_line(const int channel, void *address) {
   switch (channel) {
-  case 0: SENDCONFIG(address, 0xd, 0); return;
-  case 1: SENDCONFIG(address, 0xd, 1); return;
-  case 2: SENDCONFIG(address, 0xd, 2); return;
-  case 3: SENDCONFIG(address, 0xd, 3); return;
-  case 4: SENDCONFIG(address, 0xd, 4); return;
-  case 5: SENDCONFIG(address, 0xd, 5); return;
-  case 6: SENDCONFIG(address, 0xd, 6); return;
-  case 7: SENDCONFIG(address, 0xd, 7); return;
-  case 8: SENDCONFIG(address, 0xd, 8); return;
-  case 9: SENDCONFIG(address, 0xd, 9); return;
-  case 10: SENDCONFIG(address, 0xd, 10); return;
-  case 11: SENDCONFIG(address, 0xd, 11); return;
-  case 12: SENDCONFIG(address, 0xd, 12); return;
-  case 13: SENDCONFIG(address, 0xd, 13); return;
-  case 14: SENDCONFIG(address, 0xd, 14); return;
+  case 0: SENDCONFIG(address, SC_VALIDATE_LINE, 0); return;
+  case 1: SENDCONFIG(address, SC_VALIDATE_LINE, 1); return;
+  case 2: SENDCONFIG(address, SC_VALIDATE_LINE, 2); return;
+  case 3: SENDCONFIG(address, SC_VALIDATE_LINE, 3); return;
+  case 4: SENDCONFIG(address, SC_VALIDATE_LINE, 4); return;
+  case 5: SENDCONFIG(address, SC_VALIDATE_LINE, 5); return;
+  case 6: SENDCONFIG(address, SC_VALIDATE_LINE, 6); return;
+  case 7: SENDCONFIG(address, SC_VALIDATE_LINE, 7); return;
+  case 8: SENDCONFIG(address, SC_VALIDATE_LINE, 8); return;
+  case 9: SENDCONFIG(address, SC_VALIDATE_LINE, 9); return;
+  case 10: SENDCONFIG(address, SC_VALIDATE_LINE, 10); return;
+  case 11: SENDCONFIG(address, SC_VALIDATE_LINE, 11); return;
+  case 12: SENDCONFIG(address, SC_VALIDATE_LINE, 12); return;
+  case 13: SENDCONFIG(address, SC_VALIDATE_LINE, 13); return;
+  case 14: SENDCONFIG(address, SC_VALIDATE_LINE, 14); return;
   default: assert(0); __builtin_unreachable();
   }
 }
@@ -605,21 +641,21 @@ static inline void loki_channel_prefetch_cache_line(
   const int channel, void const *address
 ) {
   switch (channel) {
-  case 0: SENDCONFIG(address, 0xf, 0); return;
-  case 1: SENDCONFIG(address, 0xf, 1); return;
-  case 2: SENDCONFIG(address, 0xf, 2); return;
-  case 3: SENDCONFIG(address, 0xf, 3); return;
-  case 4: SENDCONFIG(address, 0xf, 4); return;
-  case 5: SENDCONFIG(address, 0xf, 5); return;
-  case 6: SENDCONFIG(address, 0xf, 6); return;
-  case 7: SENDCONFIG(address, 0xf, 7); return;
-  case 8: SENDCONFIG(address, 0xf, 8); return;
-  case 9: SENDCONFIG(address, 0xf, 9); return;
-  case 10: SENDCONFIG(address, 0xf, 10); return;
-  case 11: SENDCONFIG(address, 0xf, 11); return;
-  case 12: SENDCONFIG(address, 0xf, 12); return;
-  case 13: SENDCONFIG(address, 0xf, 13); return;
-  case 14: SENDCONFIG(address, 0xf, 14); return;
+  case 0: SENDCONFIG(address, SC_PREFETCH_LINE, 0); return;
+  case 1: SENDCONFIG(address, SC_PREFETCH_LINE, 1); return;
+  case 2: SENDCONFIG(address, SC_PREFETCH_LINE, 2); return;
+  case 3: SENDCONFIG(address, SC_PREFETCH_LINE, 3); return;
+  case 4: SENDCONFIG(address, SC_PREFETCH_LINE, 4); return;
+  case 5: SENDCONFIG(address, SC_PREFETCH_LINE, 5); return;
+  case 6: SENDCONFIG(address, SC_PREFETCH_LINE, 6); return;
+  case 7: SENDCONFIG(address, SC_PREFETCH_LINE, 7); return;
+  case 8: SENDCONFIG(address, SC_PREFETCH_LINE, 8); return;
+  case 9: SENDCONFIG(address, SC_PREFETCH_LINE, 9); return;
+  case 10: SENDCONFIG(address, SC_PREFETCH_LINE, 10); return;
+  case 11: SENDCONFIG(address, SC_PREFETCH_LINE, 11); return;
+  case 12: SENDCONFIG(address, SC_PREFETCH_LINE, 12); return;
+  case 13: SENDCONFIG(address, SC_PREFETCH_LINE, 13); return;
+  case 14: SENDCONFIG(address, SC_PREFETCH_LINE, 14); return;
   default: assert(0); __builtin_unreachable();
   }
 }
@@ -629,21 +665,21 @@ static inline void loki_channel_flush_cache_line(
   const int channel, void const *address
 ) {
   switch (channel) {
-  case 0: SENDCONFIG(address, 0x11, 0); return;
-  case 1: SENDCONFIG(address, 0x11, 1); return;
-  case 2: SENDCONFIG(address, 0x11, 2); return;
-  case 3: SENDCONFIG(address, 0x11, 3); return;
-  case 4: SENDCONFIG(address, 0x11, 4); return;
-  case 5: SENDCONFIG(address, 0x11, 5); return;
-  case 6: SENDCONFIG(address, 0x11, 6); return;
-  case 7: SENDCONFIG(address, 0x11, 7); return;
-  case 8: SENDCONFIG(address, 0x11, 8); return;
-  case 9: SENDCONFIG(address, 0x11, 9); return;
-  case 10: SENDCONFIG(address, 0x11, 10); return;
-  case 11: SENDCONFIG(address, 0x11, 11); return;
-  case 12: SENDCONFIG(address, 0x11, 12); return;
-  case 13: SENDCONFIG(address, 0x11, 13); return;
-  case 14: SENDCONFIG(address, 0x11, 14); return;
+  case 0: SENDCONFIG(address, SC_FLUSH_LINE, 0); return;
+  case 1: SENDCONFIG(address, SC_FLUSH_LINE, 1); return;
+  case 2: SENDCONFIG(address, SC_FLUSH_LINE, 2); return;
+  case 3: SENDCONFIG(address, SC_FLUSH_LINE, 3); return;
+  case 4: SENDCONFIG(address, SC_FLUSH_LINE, 4); return;
+  case 5: SENDCONFIG(address, SC_FLUSH_LINE, 5); return;
+  case 6: SENDCONFIG(address, SC_FLUSH_LINE, 6); return;
+  case 7: SENDCONFIG(address, SC_FLUSH_LINE, 7); return;
+  case 8: SENDCONFIG(address, SC_FLUSH_LINE, 8); return;
+  case 9: SENDCONFIG(address, SC_FLUSH_LINE, 9); return;
+  case 10: SENDCONFIG(address, SC_FLUSH_LINE, 10); return;
+  case 11: SENDCONFIG(address, SC_FLUSH_LINE, 11); return;
+  case 12: SENDCONFIG(address, SC_FLUSH_LINE, 12); return;
+  case 13: SENDCONFIG(address, SC_FLUSH_LINE, 13); return;
+  case 14: SENDCONFIG(address, SC_FLUSH_LINE, 14); return;
   default: assert(0); __builtin_unreachable();
   }
 }
@@ -682,21 +718,21 @@ static inline void loki_channel_invalidate_cache_line(
   const int channel, void *address
 ) {
   switch (channel) {
-  case 0: SENDCONFIG(address, 0x13, 0); return;
-  case 1: SENDCONFIG(address, 0x13, 1); return;
-  case 2: SENDCONFIG(address, 0x13, 2); return;
-  case 3: SENDCONFIG(address, 0x13, 3); return;
-  case 4: SENDCONFIG(address, 0x13, 4); return;
-  case 5: SENDCONFIG(address, 0x13, 5); return;
-  case 6: SENDCONFIG(address, 0x13, 6); return;
-  case 7: SENDCONFIG(address, 0x13, 7); return;
-  case 8: SENDCONFIG(address, 0x13, 8); return;
-  case 9: SENDCONFIG(address, 0x13, 9); return;
-  case 10: SENDCONFIG(address, 0x13, 10); return;
-  case 11: SENDCONFIG(address, 0x13, 11); return;
-  case 12: SENDCONFIG(address, 0x13, 12); return;
-  case 13: SENDCONFIG(address, 0x13, 13); return;
-  case 14: SENDCONFIG(address, 0x13, 14); return;
+  case 0: SENDCONFIG(address, SC_INVALIDATE_LINE, 0); return;
+  case 1: SENDCONFIG(address, SC_INVALIDATE_LINE, 1); return;
+  case 2: SENDCONFIG(address, SC_INVALIDATE_LINE, 2); return;
+  case 3: SENDCONFIG(address, SC_INVALIDATE_LINE, 3); return;
+  case 4: SENDCONFIG(address, SC_INVALIDATE_LINE, 4); return;
+  case 5: SENDCONFIG(address, SC_INVALIDATE_LINE, 5); return;
+  case 6: SENDCONFIG(address, SC_INVALIDATE_LINE, 6); return;
+  case 7: SENDCONFIG(address, SC_INVALIDATE_LINE, 7); return;
+  case 8: SENDCONFIG(address, SC_INVALIDATE_LINE, 8); return;
+  case 9: SENDCONFIG(address, SC_INVALIDATE_LINE, 9); return;
+  case 10: SENDCONFIG(address, SC_INVALIDATE_LINE, 10); return;
+  case 11: SENDCONFIG(address, SC_INVALIDATE_LINE, 11); return;
+  case 12: SENDCONFIG(address, SC_INVALIDATE_LINE, 12); return;
+  case 13: SENDCONFIG(address, SC_INVALIDATE_LINE, 13); return;
+  case 14: SENDCONFIG(address, SC_INVALIDATE_LINE, 14); return;
   default: assert(0); __builtin_unreachable();
   }
 }
@@ -723,21 +759,21 @@ static inline void loki_channel_flush_all_lines(
   const int channel, void const *address
 ) {
   switch (channel) {
-  case 0: SENDCONFIG(address, 0x15, 0); return;
-  case 1: SENDCONFIG(address, 0x15, 1); return;
-  case 2: SENDCONFIG(address, 0x15, 2); return;
-  case 3: SENDCONFIG(address, 0x15, 3); return;
-  case 4: SENDCONFIG(address, 0x15, 4); return;
-  case 5: SENDCONFIG(address, 0x15, 5); return;
-  case 6: SENDCONFIG(address, 0x15, 6); return;
-  case 7: SENDCONFIG(address, 0x15, 7); return;
-  case 8: SENDCONFIG(address, 0x15, 8); return;
-  case 9: SENDCONFIG(address, 0x15, 9); return;
-  case 10: SENDCONFIG(address, 0x15, 10); return;
-  case 11: SENDCONFIG(address, 0x15, 11); return;
-  case 12: SENDCONFIG(address, 0x15, 12); return;
-  case 13: SENDCONFIG(address, 0x15, 13); return;
-  case 14: SENDCONFIG(address, 0x15, 14); return;
+  case 0: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 0); return;
+  case 1: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 1); return;
+  case 2: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 2); return;
+  case 3: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 3); return;
+  case 4: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 4); return;
+  case 5: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 5); return;
+  case 6: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 6); return;
+  case 7: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 7); return;
+  case 8: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 8); return;
+  case 9: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 9); return;
+  case 10: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 10); return;
+  case 11: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 11); return;
+  case 12: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 12); return;
+  case 13: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 13); return;
+  case 14: SENDCONFIG(address, SC_FLUSH_ALL_LINES, 14); return;
   default: assert(0); __builtin_unreachable();
   }
 }
@@ -747,21 +783,21 @@ static inline void loki_channel_invalidate_all_lines(
   const int channel, void *address
 ) {
   switch (channel) {
-  case 0: SENDCONFIG(address, 0x17, 0); return;
-  case 1: SENDCONFIG(address, 0x17, 1); return;
-  case 2: SENDCONFIG(address, 0x17, 2); return;
-  case 3: SENDCONFIG(address, 0x17, 3); return;
-  case 4: SENDCONFIG(address, 0x17, 4); return;
-  case 5: SENDCONFIG(address, 0x17, 5); return;
-  case 6: SENDCONFIG(address, 0x17, 6); return;
-  case 7: SENDCONFIG(address, 0x17, 7); return;
-  case 8: SENDCONFIG(address, 0x17, 8); return;
-  case 9: SENDCONFIG(address, 0x17, 9); return;
-  case 10: SENDCONFIG(address, 0x17, 10); return;
-  case 11: SENDCONFIG(address, 0x17, 11); return;
-  case 12: SENDCONFIG(address, 0x17, 12); return;
-  case 13: SENDCONFIG(address, 0x17, 13); return;
-  case 14: SENDCONFIG(address, 0x17, 14); return;
+  case 0: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 0); return;
+  case 1: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 1); return;
+  case 2: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 2); return;
+  case 3: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 3); return;
+  case 4: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 4); return;
+  case 5: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 5); return;
+  case 6: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 6); return;
+  case 7: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 7); return;
+  case 8: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 8); return;
+  case 9: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 9); return;
+  case 10: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 10); return;
+  case 11: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 11); return;
+  case 12: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 12); return;
+  case 13: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 13); return;
+  case 14: SENDCONFIG(address, SC_INVALIDATE_ALL_LINES, 14); return;
   default: assert(0); __builtin_unreachable();
   }
 }
@@ -933,21 +969,21 @@ static inline void loki_channel_store_cache_line(
   int value4, int value5, int value6, int value7
 ) {
   switch (channel) {
-  case 0: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 0); return;
-  case 1: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 1); return;
-  case 2: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 2); return;
-  case 3: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 3); return;
-  case 4: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 4); return;
-  case 5: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 5); return;
-  case 6: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 6); return;
-  case 7: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 7); return;
-  case 8: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 8); return;
-  case 9: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 9); return;
-  case 10: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 10); return;
-  case 11: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 11); return;
-  case 12: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 12); return;
-  case 13: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 13); return;
-  case 14: SENDCONFIG9(address, 0x8, value0, value1, value2, value3, value4, value5, value6, value7, 0x1f, 14); return;
+  case 0: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 0); return;
+  case 1: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 1); return;
+  case 2: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 2); return;
+  case 3: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 3); return;
+  case 4: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 4); return;
+  case 5: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 5); return;
+  case 6: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 6); return;
+  case 7: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 7); return;
+  case 8: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 8); return;
+  case 9: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 9); return;
+  case 10: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 10); return;
+  case 11: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 11); return;
+  case 12: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 12); return;
+  case 13: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 13); return;
+  case 14: SENDCONFIG9(address, SC_STORE_LINE, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD, 14); return;
   default: assert(0); __builtin_unreachable();
   }
 }
@@ -957,21 +993,21 @@ static inline void loki_channel_memset_cache_line(
   const int channel, void *address, int value
 ) {
   switch (channel) {
-  case 0: SENDCONFIG2(address, 0xa, value, 0x1f, 0); return;
-  case 1: SENDCONFIG2(address, 0xa, value, 0x1f, 1); return;
-  case 2: SENDCONFIG2(address, 0xa, value, 0x1f, 2); return;
-  case 3: SENDCONFIG2(address, 0xa, value, 0x1f, 3); return;
-  case 4: SENDCONFIG2(address, 0xa, value, 0x1f, 4); return;
-  case 5: SENDCONFIG2(address, 0xa, value, 0x1f, 5); return;
-  case 6: SENDCONFIG2(address, 0xa, value, 0x1f, 6); return;
-  case 7: SENDCONFIG2(address, 0xa, value, 0x1f, 7); return;
-  case 8: SENDCONFIG2(address, 0xa, value, 0x1f, 8); return;
-  case 9: SENDCONFIG2(address, 0xa, value, 0x1f, 9); return;
-  case 10: SENDCONFIG2(address, 0xa, value, 0x1f, 10); return;
-  case 11: SENDCONFIG2(address, 0xa, value, 0x1f, 11); return;
-  case 12: SENDCONFIG2(address, 0xa, value, 0x1f, 12); return;
-  case 13: SENDCONFIG2(address, 0xa, value, 0x1f, 13); return;
-  case 14: SENDCONFIG2(address, 0xa, value, 0x1f, 14); return;
+  case 0: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 0); return;
+  case 1: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 1); return;
+  case 2: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 2); return;
+  case 3: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 3); return;
+  case 4: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 4); return;
+  case 5: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 5); return;
+  case 6: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 6); return;
+  case 7: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 7); return;
+  case 8: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 8); return;
+  case 9: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 9); return;
+  case 10: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 10); return;
+  case 11: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 11); return;
+  case 12: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 12); return;
+  case 13: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 13); return;
+  case 14: SENDCONFIG2(address, SC_MEMSET_LINE, value, SC_PAYLOAD_EOP, 14); return;
   default: assert(0); __builtin_unreachable();
   }
 }
@@ -1010,21 +1046,21 @@ static inline void loki_channel_push_cache_line(
   int value4, int value5, int value6, int value7
 ) {
   switch (channel) {
-  case 0: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 0); return;
-  case 1: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 1); return;
-  case 2: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 2); return;
-  case 3: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 3); return;
-  case 4: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 4); return;
-  case 5: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 5); return;
-  case 6: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 6); return;
-  case 7: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 7); return;
-  case 8: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 8); return;
-  case 9: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 9); return;
-  case 10: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 10); return;
-  case 11: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 11); return;
-  case 12: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 12); return;
-  case 13: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 13); return;
-  case 14: SENDCONFIG9(address, 0x2c, value0, value1, value2, value3, value4, value5, value6, value7, 0x3f, 14); return;
+  case 0: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 0); return;
+  case 1: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 1); return;
+  case 2: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 2); return;
+  case 3: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 3); return;
+  case 4: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 4); return;
+  case 5: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 5); return;
+  case 6: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 6); return;
+  case 7: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 7); return;
+  case 8: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 8); return;
+  case 9: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 9); return;
+  case 10: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 10); return;
+  case 11: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 11); return;
+  case 12: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 12); return;
+  case 13: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 13); return;
+  case 14: SENDCONFIG9(address, SC_PUSH_LINE | SC_SKIP_L1, value0, value1, value2, value3, value4, value5, value6, value7, SC_PAYLOAD | SC_SKIP_L1, 14); return;
   default: assert(0); __builtin_unreachable();
   }
 }
@@ -1234,21 +1270,21 @@ static inline void loki_channel_update_directory_entry(
   const int channel, void *address, int value
 ) {
   switch (channel) {
-  case 0: SENDCONFIG2(address, 0x1a, value, 0x1f, 0); return;
-  case 1: SENDCONFIG2(address, 0x1a, value, 0x1f, 1); return;
-  case 2: SENDCONFIG2(address, 0x1a, value, 0x1f, 2); return;
-  case 3: SENDCONFIG2(address, 0x1a, value, 0x1f, 3); return;
-  case 4: SENDCONFIG2(address, 0x1a, value, 0x1f, 4); return;
-  case 5: SENDCONFIG2(address, 0x1a, value, 0x1f, 5); return;
-  case 6: SENDCONFIG2(address, 0x1a, value, 0x1f, 6); return;
-  case 7: SENDCONFIG2(address, 0x1a, value, 0x1f, 7); return;
-  case 8: SENDCONFIG2(address, 0x1a, value, 0x1f, 8); return;
-  case 9: SENDCONFIG2(address, 0x1a, value, 0x1f, 9); return;
-  case 10: SENDCONFIG2(address, 0x1a, value, 0x1f, 10); return;
-  case 11: SENDCONFIG2(address, 0x1a, value, 0x1f, 11); return;
-  case 12: SENDCONFIG2(address, 0x1a, value, 0x1f, 12); return;
-  case 13: SENDCONFIG2(address, 0x1a, value, 0x1f, 13); return;
-  case 14: SENDCONFIG2(address, 0x1a, value, 0x1f, 14); return;
+  case 0: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 0); return;
+  case 1: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 1); return;
+  case 2: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 2); return;
+  case 3: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 3); return;
+  case 4: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 4); return;
+  case 5: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 5); return;
+  case 6: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 6); return;
+  case 7: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 7); return;
+  case 8: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 8); return;
+  case 9: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 9); return;
+  case 10: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 10); return;
+  case 11: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 11); return;
+  case 12: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 12); return;
+  case 13: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 13); return;
+  case 14: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_ENTRY, value, SC_PAYLOAD, 14); return;
   default: assert(0); __builtin_unreachable();
   }
 }
@@ -1258,21 +1294,21 @@ static inline void loki_channel_update_directory_mask(
   const int channel, void *address, int value
 ) {
   switch (channel) {
-  case 0: SENDCONFIG2(address, 0x1c, value, 0x1f, 0); return;
-  case 1: SENDCONFIG2(address, 0x1c, value, 0x1f, 1); return;
-  case 2: SENDCONFIG2(address, 0x1c, value, 0x1f, 2); return;
-  case 3: SENDCONFIG2(address, 0x1c, value, 0x1f, 3); return;
-  case 4: SENDCONFIG2(address, 0x1c, value, 0x1f, 4); return;
-  case 5: SENDCONFIG2(address, 0x1c, value, 0x1f, 5); return;
-  case 6: SENDCONFIG2(address, 0x1c, value, 0x1f, 6); return;
-  case 7: SENDCONFIG2(address, 0x1c, value, 0x1f, 7); return;
-  case 8: SENDCONFIG2(address, 0x1c, value, 0x1f, 8); return;
-  case 9: SENDCONFIG2(address, 0x1c, value, 0x1f, 9); return;
-  case 10: SENDCONFIG2(address, 0x1c, value, 0x1f, 10); return;
-  case 11: SENDCONFIG2(address, 0x1c, value, 0x1f, 11); return;
-  case 12: SENDCONFIG2(address, 0x1c, value, 0x1f, 12); return;
-  case 13: SENDCONFIG2(address, 0x1c, value, 0x1f, 13); return;
-  case 14: SENDCONFIG2(address, 0x1c, value, 0x1f, 14); return;
+  case 0: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 0); return;
+  case 1: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 1); return;
+  case 2: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 2); return;
+  case 3: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 3); return;
+  case 4: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 4); return;
+  case 5: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 5); return;
+  case 6: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 6); return;
+  case 7: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 7); return;
+  case 8: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 8); return;
+  case 9: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 9); return;
+  case 10: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 10); return;
+  case 11: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 11); return;
+  case 12: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 12); return;
+  case 13: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 13); return;
+  case 14: SENDCONFIG2(address, SC_UPDATE_DIRECTORY_MASK, value, SC_PAYLOAD, 14); return;
   default: assert(0); __builtin_unreachable();
   }
 }
@@ -1285,21 +1321,21 @@ static inline void loki_channel_acquire_ex(
   , unsigned int const message
 ) {
   switch (channel) {
-  case 0: SENDCONFIG(message, 0x3, 0); return;
-  case 1: SENDCONFIG(message, 0x3, 1); return;
-  case 2: SENDCONFIG(message, 0x3, 2); return;
-  case 3: SENDCONFIG(message, 0x3, 3); return;
-  case 4: SENDCONFIG(message, 0x3, 4); return;
-  case 5: SENDCONFIG(message, 0x3, 5); return;
-  case 6: SENDCONFIG(message, 0x3, 6); return;
-  case 7: SENDCONFIG(message, 0x3, 7); return;
-  case 8: SENDCONFIG(message, 0x3, 8); return;
-  case 9: SENDCONFIG(message, 0x3, 9); return;
-  case 10: SENDCONFIG(message, 0x3, 10); return;
-  case 11: SENDCONFIG(message, 0x3, 11); return;
-  case 12: SENDCONFIG(message, 0x3, 12); return;
-  case 13: SENDCONFIG(message, 0x3, 13); return;
-  case 14: SENDCONFIG(message, 0x3, 14); return;
+  case 0: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 0); return;
+  case 1: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 1); return;
+  case 2: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 2); return;
+  case 3: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 3); return;
+  case 4: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 4); return;
+  case 5: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 5); return;
+  case 6: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 6); return;
+  case 7: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 7); return;
+  case 8: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 8); return;
+  case 9: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 9); return;
+  case 10: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 10); return;
+  case 11: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 11); return;
+  case 12: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 12); return;
+  case 13: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 13); return;
+  case 14: SENDCONFIG(message, SC_UNACQUIRED | SC_ALLOCATE | SC_EOP, 14); return;
   default: assert(0); __builtin_unreachable();
   }
 }
@@ -1327,9 +1363,9 @@ static inline void loki_channel_acquire_ex(
     "fetchr 0f\n"\
     "cregrdi %0, 1\n"\
     "lui %0, %1\n"\
-    "sendconfig.eop %0, 0x3 -> %1\n0:\n"\
+    "sendconfig.eop %0, %2 -> %1\n0:\n"\
     : "+r"(temp)\
-    : "n"(output)\
+    : "n"(output), "n"(SC_UNACQUIRED | SC_ALLOCATE | SC_EOP)\
   );\
 }
 
@@ -1359,21 +1395,21 @@ static inline void loki_channel_acquire(int const channel) {
 //! Send a channel release operation on a given output channel.
 static inline void loki_channel_release(int const channel) {
   switch (channel) {
-  case 0: SENDCONFIG(0, 0x7, 0); return;
-  case 1: SENDCONFIG(0, 0x7, 1); return;
-  case 2: SENDCONFIG(0, 0x7, 2); return;
-  case 3: SENDCONFIG(0, 0x7, 3); return;
-  case 4: SENDCONFIG(0, 0x7, 4); return;
-  case 5: SENDCONFIG(0, 0x7, 5); return;
-  case 6: SENDCONFIG(0, 0x7, 6); return;
-  case 7: SENDCONFIG(0, 0x7, 7); return;
-  case 8: SENDCONFIG(0, 0x7, 8); return;
-  case 9: SENDCONFIG(0, 0x7, 9); return;
-  case 10: SENDCONFIG(0, 0x7, 10); return;
-  case 11: SENDCONFIG(0, 0x7, 11); return;
-  case 12: SENDCONFIG(0, 0x7, 12); return;
-  case 13: SENDCONFIG(0, 0x7, 13); return;
-  case 14: SENDCONFIG(0, 0x7, 14); return;
+  case 0: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 0); return;
+  case 1: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 1); return;
+  case 2: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 2); return;
+  case 3: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 3); return;
+  case 4: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 4); return;
+  case 5: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 5); return;
+  case 6: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 6); return;
+  case 7: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 7); return;
+  case 8: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 8); return;
+  case 9: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 9); return;
+  case 10: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 10); return;
+  case 11: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 11); return;
+  case 12: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 12); return;
+  case 13: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 13); return;
+  case 14: SENDCONFIG(0, SC_ACQUIRED | SC_ALLOCATE | SC_EOP, 14); return;
   default: assert(0); __builtin_unreachable();
   }
 }
