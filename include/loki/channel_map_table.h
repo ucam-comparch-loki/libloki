@@ -20,11 +20,12 @@
  * To generate entries to be stored in the channel map table, see channels.h.
  */
 
+#include <loki/channels.h>
+
 #ifndef LOKI_CHANNEL_MAP_TABLE_H_
 #define LOKI_CHANNEL_MAP_TABLE_H_
 
 #include <assert.h>
-#include <loki/channels.h>
 
 //! \brief The number of entries in the channel map table, including reserved
 //! entries.
