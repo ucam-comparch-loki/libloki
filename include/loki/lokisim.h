@@ -32,5 +32,21 @@ static inline void start_instruction_trace() {
 static inline void stop_instruction_trace() {
   SYS_CALL(0x25);
 }
+//! Print register file contents
+static inline void register_file_snapshot() {
+  SYS_CALL(0x26);
+}
+//! Wipe any statistics collected so far
+static inline void clear_statistics() {
+  SYS_CALL(0x27);
+}
+//! Start collecting statistics
+static inline void start_statistics() {
+  SYS_CALL(0x28);
+}
+//! Stop collecting statistics
+static inline void stop_statistics() {
+  SYS_CALL(0x29);
+}
 
 #endif
