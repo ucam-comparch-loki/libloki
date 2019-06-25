@@ -22,9 +22,6 @@
 #include <loki/types.h>
 #include <string.h>
 
-//! Number of words in each core's scratchpad.
-#define SCRATCHPAD_NUM_WORDS 256
-
 //! \brief Read the word in the scratchpad at the given address. The scratchpad is
 //! word-addressed.
 static inline int scratchpad_read(unsigned int address) {

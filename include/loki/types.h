@@ -10,22 +10,13 @@ typedef unsigned int uint;
 //! Boolean values.
 #include <stdbool.h>
 
+#include <loki/chip.h>
+
 //! \brief Hack to allow commas to be passed as part of a macro argument, instead of
 //! looking like the end of an argument.
 //!
 //! This is useful when listing registers in the dataflow macros, for example.
 #define AND ,
-
-//! Number of cores in each tile.
-#define CORES_PER_TILE 8
-//! Number of memory banks in each tile.
-#define BANKS_PER_TILE 8
-
-//! Number of rows of compute tiles on the chip (excluding I/O halo).
-#define COMPUTE_TILE_ROWS 4
-
-//! Number of columns of compute tiles on the chip (excluding I/O halo).
-#define COMPUTE_TILE_COLUMNS 4
 
 //! Tile ID - a tile on the processor.
 typedef unsigned int tile_id_t;
@@ -33,6 +24,9 @@ typedef unsigned int tile_id_t;
 #define TILE_ID_T_BITS 6
 //! Core ID - a core on the processor.
 typedef unsigned int core_id_t;
+
+//! Mask to zero out parts of any bitmask which extend beyond what is allowed.
+#define SUPPORTED_COREMASK ((1 << CORES_PER_TILE) - 1)
 
 //! Positions of cores within a tile.
 enum Cores {
@@ -64,14 +58,14 @@ enum Memories {
 //! of common destinations. Any bitmask of \ref CORES_PER_TILE bits is valid,
 //! with the least significant bit representing core 0.
 enum MulticastDestinations {
-  MULTICAST_CORE_0 = 0x01, //!< Core 0.
-  MULTICAST_CORE_1 = 0x02, //!< Core 1.
-  MULTICAST_CORE_2 = 0x04, //!< Core 2.
-  MULTICAST_CORE_3 = 0x08, //!< Core 3.
-  MULTICAST_CORE_4 = 0x10, //!< Core 4.
-  MULTICAST_CORE_5 = 0x20, //!< Core 5.
-  MULTICAST_CORE_6 = 0x40, //!< Core 6.
-  MULTICAST_CORE_7 = 0x80, //!< Core 7.
+  MULTICAST_CORE_0 = 0x01 & SUPPORTED_COREMASK, //!< Core 0.
+  MULTICAST_CORE_1 = 0x02 & SUPPORTED_COREMASK, //!< Core 1.
+  MULTICAST_CORE_2 = 0x04 & SUPPORTED_COREMASK, //!< Core 2.
+  MULTICAST_CORE_3 = 0x08 & SUPPORTED_COREMASK, //!< Core 3.
+  MULTICAST_CORE_4 = 0x10 & SUPPORTED_COREMASK, //!< Core 4.
+  MULTICAST_CORE_5 = 0x20 & SUPPORTED_COREMASK, //!< Core 5.
+  MULTICAST_CORE_6 = 0x40 & SUPPORTED_COREMASK, //!< Core 6.
+  MULTICAST_CORE_7 = 0x80 & SUPPORTED_COREMASK, //!< Core 7.
 
   //! No cores mask.
   MULTICAST_CORE_NONE = 0,

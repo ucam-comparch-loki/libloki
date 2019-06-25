@@ -92,7 +92,7 @@ static inline void init_remote_tile(const tile_id_t tile, const init_config* con
   loki_send(2, config->inst_mem);
   loki_send(2, config->data_mem);
   loki_send(2, (int)config->stack_pointer - tile2int(tile)*CORES_PER_TILE*config->stack_size);
-  
+
   // Send some instructions to execute.
   int inst_fifo = loki_core_address(tile, 0, 0, INFINITE_CREDIT_COUNT);
   set_channel_map(2, inst_fifo);
@@ -160,10 +160,10 @@ void loki_init_tiles(int num_tiles, tile_id_t* tile_ids, init_config* config) {
     else
       init_remote_tile(tile_ids[tile], config);
   }
-  
+
   if (init_self)
     init_local_tile(config);
-    
+
   // FIXME: these initialisation functions include a synchronisation, but don't
   // know which tiles to synchronise.
 }
@@ -180,7 +180,7 @@ void loki_init_default(const uint cores, const setup_func setup) {
   config->config_func = setup;
 
   loki_init(config);
-  
+
   loki_free(config);
 
 }
@@ -326,14 +326,16 @@ void loki_memory_cache_reconfigure(
   loki_memory_reconfigure_send_channels(value);
 
   // Setup instruction broadcast for later.
-  address = loki_mcast_address(all_cores(8), CH_IPK_FIFO, false);
+  address = loki_mcast_address(all_cores(CORES_PER_TILE), CH_IPK_FIFO, false);
   set_channel_map(2, address);
 
   // Have all other cores execute loki_sleep when done.
-  address = loki_mcast_address(all_cores_except_current(8), CH_REGISTER_3, false);
+  address = loki_mcast_address(all_cores_except_current(CORES_PER_TILE),
+                               CH_REGISTER_3, false);
   set_channel_map(4, address);
   loki_send(4, (int)&loki_sleep);
-  address = loki_mcast_address(single_core_bitmask(get_core_id()), CH_REGISTER_3, false);
+  address = loki_mcast_address(single_core_bitmask(get_core_id()),
+                               CH_REGISTER_3, false);
   set_channel_map(4, address);
 
   int t0;
@@ -381,14 +383,16 @@ void loki_memory_directory_reconfigure(
   loki_memory_reconfigure_send_directory_entries(value);
 
   // Setup instruction broadcast for later.
-  address = loki_mcast_address(all_cores(8), CH_IPK_FIFO, false);
+  address = loki_mcast_address(all_cores(CORES_PER_TILE), CH_IPK_FIFO, false);
   set_channel_map(2, address);
 
   // Have all other cores execute loki_sleep when done.
-  address = loki_mcast_address(all_cores_except_current(8), CH_REGISTER_3, false);
+  address = loki_mcast_address(all_cores_except_current(CORES_PER_TILE),
+                               CH_REGISTER_3, false);
   set_channel_map(4, address);
   loki_send(4, (int)&loki_sleep);
-  address = loki_mcast_address(single_core_bitmask(get_core_id()), CH_REGISTER_3, false);
+  address = loki_mcast_address(single_core_bitmask(get_core_id()),
+                               CH_REGISTER_3, false);
   set_channel_map(4, address);
 
   int t0;
@@ -470,14 +474,16 @@ void loki_memory_tile_reconfigure(
   loki_memory_reconfigure_send_channels(cache);
 
   // Setup instruction broadcast for later.
-  address = loki_mcast_address(all_cores(8), CH_IPK_FIFO, false);
+  address = loki_mcast_address(all_cores(CORES_PER_TILE), CH_IPK_FIFO, false);
   set_channel_map(2, address);
 
   // Have all other cores execute loki_sleep when done.
-  address = loki_mcast_address(all_cores_except_current(8), CH_REGISTER_3, false);
+  address = loki_mcast_address(all_cores_except_current(CORES_PER_TILE),
+                               CH_REGISTER_3, false);
   set_channel_map(4, address);
   loki_send(4, (int)&loki_sleep);
-  address = loki_mcast_address(single_core_bitmask(get_core_id()), CH_REGISTER_3, false);
+  address = loki_mcast_address(single_core_bitmask(get_core_id()),
+                               CH_REGISTER_3, false);
   set_channel_map(4, address);
 
   int t0;
@@ -585,7 +591,8 @@ void loki_sync_tiles(const uint tiles) {
   // All tiles except the first one send a token to their other neighbour
   // (after setting up a connection).
   if (tile > 0) {
-    int address = loki_core_address(int2tile(tile-1), 0, CH_REGISTER_7, INFINITE_CREDIT_COUNT);
+    int address = loki_core_address(int2tile(tile-1), 0, CH_REGISTER_7,
+                                    INFINITE_CREDIT_COUNT);
     set_channel_map(2, address);
     loki_send_token(2);
     loki_receive_token(CH_REGISTER_7);
@@ -594,7 +601,8 @@ void loki_sync_tiles(const uint tiles) {
     assert(tile == 0);
     int destination;
     for (destination = 1; destination < tiles; destination++) {
-      int address = loki_core_address(int2tile(destination), 0, CH_REGISTER_7, INFINITE_CREDIT_COUNT);
+      int address = loki_core_address(int2tile(destination), 0, CH_REGISTER_7,
+                                      INFINITE_CREDIT_COUNT);
       set_channel_map(2, address);
       loki_send_token(2);
     }
@@ -607,8 +615,8 @@ void loki_sync_tiles(const uint tiles) {
 void loki_sync_ex(const uint cores, const tile_id_t first_tile) {
   if (cores <= 1)
     return;
-    
-  assert(cores <= 128);
+
+  assert(cores <= CORES_PER_TILE * COMPUTE_TILE_ROWS * COMPUTE_TILE_COLUMNS);
 
   uint core = get_core_id();
   tile_id_t tile = get_tile_id();
@@ -623,10 +631,11 @@ void loki_sync_ex(const uint cores, const tile_id_t first_tile) {
   // All cores except the first one send a token to their other neighbour
   // (after setting up a connection).
   if (core > 0) {
-    int address = loki_mcast_address(single_core_bitmask(core-1), CH_REGISTER_3, false);
+    int address = loki_mcast_address(single_core_bitmask(core-1),
+                                     CH_REGISTER_3, false);
     set_channel_map(2, address);
     loki_send_token(2);
-    
+
     // Receive token from core 0, telling us that synchronisation has finished.
     loki_receive_token(CH_REGISTER_3);
   } else {
@@ -662,7 +671,8 @@ void loki_tile_sync(const uint cores) {
   // All cores except the first one send a token to their other neighbour
   // (after setting up a connection).
   if (core > 0) {
-    int address = loki_mcast_address(single_core_bitmask(core-1), CH_REGISTER_3, false);
+    int address = loki_mcast_address(single_core_bitmask(core-1),
+                                     CH_REGISTER_3, false);
     set_channel_map(2, address);
     loki_send_token(2);
     loki_receive_token(CH_REGISTER_3);
@@ -699,7 +709,7 @@ typedef struct distributed_func_internal_ {
 // Start cores on the current tile. This must be executed by core 0.
 static void distribute_to_local_tile(const distributed_func_internal *internal) {
   const distributed_func *config = internal->config;
-  
+
   // Invalidate all data and refetch it to ensure it is up-to-date if we are on
   // a different tile.
   if (get_tile_id() != internal->first_tile) {
@@ -720,7 +730,7 @@ static void distribute_to_local_tile(const distributed_func_internal *internal) 
     loki_send(2, (int)config->data);      // send pointer to function argument(s)
     loki_send(2, (int)&loki_sleep);       // send function pointers
     loki_send(2, (int)config->func);
-    
+
     // Tell all cores to start executing the loop.
     set_channel_map(2, ipk_fifos);
     asm volatile (
@@ -743,15 +753,16 @@ static void distribute_to_local_tile(const distributed_func_internal *internal) 
 // Start cores on another tile.
 static void distribute_to_remote_tile(tile_id_t tile, distributed_func_internal const *internal) {
   // Assume that all data has already been flushed.
-  
+
   // Have core 0 of the remote tile share the data with all other cores there.
-  loki_remote_execute(tile, 0, &distribute_to_local_tile, (void*)internal, sizeof(distributed_func_internal));
+  loki_remote_execute(tile, 0, &distribute_to_local_tile, (void*)internal,
+                      sizeof(distributed_func_internal));
 }
 
 // The main function to call to execute the same function on many cores.
 void loki_execute(const distributed_func* config) {
   // Multiple tiles: malloc data, and share via main memory.
-  if (config->cores > CORES_PER_TILE) {      
+  if (config->cores > CORES_PER_TILE) {
     distributed_func_internal* internal =
         loki_malloc(sizeof(distributed_func_internal));
     internal->config = config;
@@ -772,19 +783,19 @@ void loki_execute(const distributed_func* config) {
 
     // TODO: free(internal) when we know all cores have finished with it.
   }
-  
+
   // Single tile: allocate on stack and share locally. malloc relies on global
   // variables, and is unsafe.
   else if (config->cores > 1) {
     distributed_func_internal internal;
     internal.config = config;
     internal.first_tile = get_tile_id();
-    
+
     distribute_to_local_tile(&internal);
     // TODO: Would like a sync here to make sure all cores have finished with
     // data before deallocating it.
   }
-  
+
   // Single core: execute function directly.
   else
     config->func(config->data);
@@ -1395,18 +1406,18 @@ static inline int loki_round_up_cache_line(int val) {
 
 void* loki_malloc(size_t size) {
   if (tile2int(get_tile_id()) != 0) {
-    printf("Warning: calling malloc on tile %d is unsafe!\n", 
+    printf("Warning: calling malloc on tile %d is unsafe!\n",
            tile2int(get_tile_id()));
   }
-             
+
   // Round the heap pointer up to the nearest cache line boundary.
   __heap_ptr = (void*)loki_round_up_cache_line((int)__heap_ptr);
-  
+
   // Round up size so we allocate a whole number of cache lines.
   size_t newSize = loki_round_up_cache_line(size);
-  
+
   // Normal malloc.
-  return malloc(newSize);  
+  return malloc(newSize);
 }
 
 void* loki_calloc (size_t num, size_t size) {
@@ -1424,14 +1435,14 @@ void* loki_realloc (void* ptr, size_t size) {
     // Would ideally like to avoid allocation if the requested size is less than
     // the current size, but we don't have the current size.
     void* newPtr = loki_malloc(size);
-    
+
     if (ptr != NULL) {
       // This is likely to copy too much, but again, we don't know how much data
       // is in the current allocation.
       memcpy(newPtr, ptr, size);
       loki_free(ptr);
     }
-    
+
     return newPtr;
   }
 }
@@ -1516,7 +1527,7 @@ void loki_remote_execute(tile_id_t tile, core_id_t core, void* func, void* args,
   if (tile == get_tile_id() && core == get_core_id()) {
     ((void (*)(void *))func)(args);
   }
-  
+
   // Execute on same tile. Memory is coherent here, so just point the core to
   // the necessary data.
   else if (tile == get_tile_id()) {
@@ -1525,10 +1536,10 @@ void loki_remote_execute(tile_id_t tile, core_id_t core, void* func, void* args,
     set_channel_map(2, data_input);
     loki_send(2, (int)args);
     loki_send(2, (int)func);
-    
+
     // Tell remote core which code to execute.
     const channel_t inst_input = loki_core_address(tile, core, 0, INFINITE_CREDIT_COUNT);
-    set_channel_map(2, inst_input);  
+    set_channel_map(2, inst_input);
     asm volatile (
       "fetchr 0f\n"
       "rmtexecute -> 2\n"           // The rest of this packet executes remotely
@@ -1539,7 +1550,7 @@ void loki_remote_execute(tile_id_t tile, core_id_t core, void* func, void* args,
       "0:\n"
     );
   }
-  
+
   // Execute on a remote tile. Memory is incoherent, so we must force the
   // arguments to be refreshed in memory
   else {
@@ -1549,10 +1560,10 @@ void loki_remote_execute(tile_id_t tile, core_id_t core, void* func, void* args,
     loki_send(2, (int)func);
     loki_send(2, (int)args);
     loki_send(2, (int)arg_size);
-    
+
     // Tell remote core which code to execute.
     const channel_t inst_input = loki_core_address(tile, core, 0, INFINITE_CREDIT_COUNT);
-    set_channel_map(2, inst_input);  
+    set_channel_map(2, inst_input);
     asm volatile (
       "fetchr 0f\n"
       "rmtexecute -> 2\n"           // The rest of this packet executes remotely

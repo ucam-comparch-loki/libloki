@@ -26,10 +26,7 @@
 #define LOKI_CHANNEL_MAP_TABLE_H_
 
 #include <assert.h>
-
-//! \brief The number of entries in the channel map table, including reserved
-//! entries.
-#define CHANNEL_MAP_TABLE_SIZE 16
+#include <loki/chip.h>
 
 //! \brief Get an entry from the channel map table.
 static inline channel_t get_channel_map(int id) {

@@ -36,11 +36,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-//! Log base 2 of size of the MHL directory.
-#define LOKI_MEMORY_DIRECTORY_SIZE_LOG2 4
-//! Size of the MHL directory. Always a power of 2.
-#define LOKI_MEMORY_DIRECTORY_SIZE      (1 << LOKI_MEMORY_DIRECTORY_SIZE_LOG2)
-
 //! Contents of an entry in the MHL directory.
 typedef struct loki_memory_directory_entry {
 	//! Next level of memory hierarchy's location.

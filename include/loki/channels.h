@@ -28,10 +28,10 @@
 
 //! Default amount of credits a channel receives in Loki. This value is deadlock
 //! safe for arbitrary communication flows.
-#define          DEFAULT_CREDIT_COUNT  4
+#define          DEFAULT_CREDIT_COUNT  CORE_INPUT_BUFFER_DEPTH
 //! Default amount of credits for a connection to the instruction FIFO. This
 //! value is deadlock safe for arbitrary connection flows.
-#define DEFAULT_IPK_FIFO_CREDIT_COUNT  8
+#define DEFAULT_IPK_FIFO_CREDIT_COUNT  IPK_FIFO_DEPTH
 //! Special infinite credit value.
 #define         INFINITE_CREDIT_COUNT 63
 
