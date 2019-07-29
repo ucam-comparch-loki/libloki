@@ -7,7 +7,7 @@ $(TARGET): $(OBJS) | lib
 	loki-elf-ranlib $@
 
 build/%.o: src/%.c $(wildcard include/loki/*.h) | build
-	loki-clang -ccc-host-triple loki-elf-linux -O3 -mllvm -unroll-threshold=50 -Iinclude -c -Werror -Wall -o $@ $<
+	loki-clang -O3 -mllvm -unroll-threshold=50 -Iinclude -c -Werror -Wall -o $@ $<
 
 .PHONY: clean
 clean:
