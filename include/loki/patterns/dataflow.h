@@ -58,11 +58,12 @@ void end_parallel_section(void);
 //! packet. May not clobber or modify r24, nor any reserved registers. Use \ref DATAFLOW_PACKET_3
 //! if extra setup code is needed.
 #define DATAFLOW_PACKET_2(core, code, outputs, inputs, clobbered) asm volatile (\
-  "  lli r24, after_dataflow_" #core "\n" /* store the address of the tidy-up code */\
-  "  fetchpstr.eop dataflow_core_" #core "\n"\
-  "dataflow_core_" #core ":\n"\
+  "  lli r24, %%lo(.Lafter_dataflow_" #core ")\n" /* store the address of the tidy-up code */\
+  "  lui r24, %%hi(.Lafter_dataflow_" #core ")\n"\
+  "  fetchpstr.eop .Ldataflow_core_" #core "\n"\
+  ".Ldataflow_core_" #core ":\n"\
   code\
-  "after_dataflow_" #core ":\n"\
+  ".Lafter_dataflow_" #core ":\n"\
   :outputs:inputs:clobbered\
 )
 
@@ -78,11 +79,12 @@ void end_parallel_section(void);
 //! packet. May not clobber or modify r24, nor any reserved registers.
 #define DATAFLOW_PACKET_3(core, init_code, code, outputs, inputs, clobbered) asm volatile (\
   init_code\
-  "  lli r24, after_dataflow_" #core "\n" /* store the address of the tidy-up code */\
+  "  lli r24, %%lo(.Lafter_dataflow_" #core ")\n" /* store the address of the tidy-up code */\
+  "  lui r24, %%hi(.Lafter_dataflow_" #core ")\n"\
   "  fetchpstr.eop dataflow_core_" #core "\n"\
-  "dataflow_core_" #core ":\n"\
+  ".Ldataflow_core_" #core ":\n"\
   code\
-  "after_dataflow_" #core ":\n"\
+  ".Lafter_dataflow_" #core ":\n"\
   :outputs:inputs:clobbered\
 )
 
