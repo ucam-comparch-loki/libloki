@@ -81,7 +81,7 @@ void end_parallel_section(void);
   init_code\
   "  lli r24, %%lo(.Lafter_dataflow_" #core ")\n" /* store the address of the tidy-up code */\
   "  lui r24, %%hi(.Lafter_dataflow_" #core ")\n"\
-  "  fetchpstr.eop dataflow_core_" #core "\n"\
+  "  fetchpstr.eop .Ldataflow_core_" #core "\n"\
   ".Ldataflow_core_" #core ":\n"\
   code\
   ".Lafter_dataflow_" #core ":\n"\
