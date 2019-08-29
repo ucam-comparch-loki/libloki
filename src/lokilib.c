@@ -1180,7 +1180,7 @@ void pipeline_stage(const pipeline_config* config, const int stage) {
     // If there is a subsequent core in the pipeline, tell it that it may now
     // begin work on the next iteration.
     if (have_successor)
-      loki_send_token(3);
+      loki_send_token(8);
   }
 
   // Final core tells core 0 when all work has finished.
