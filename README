@@ -1,6 +1,0 @@
-db434 10/2014
-
-A library intended to make it easier to use features specific to the Loki architecture. There is a particular focus on getting cores to work together, and there is also a collection of helper functions to ensure that data is packed correctly into integer representations.
-
-awc32 2015-01-20
-Forked and updated for modern architecture.
